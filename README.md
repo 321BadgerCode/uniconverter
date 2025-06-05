@@ -38,10 +38,10 @@ cd ./uniconverter/
 pip install -r requirements.txt
 ```
 
+</details>
+
 > [!NOTE]
 > Not all packages are required for the program to run, but some packages are needed for specific conversions or features.
-
-</details>
 
 ## 📈 Usage
 
