@@ -1,0 +1,5 @@
+flask
+Pillow
+pydub
+pdfminer.six
+fpdf

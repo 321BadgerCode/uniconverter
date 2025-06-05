@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>File Converter</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+	<div class="container">
+		<h1>Universal File Converter</h1>
+		<div id="drop-zone" class="drop-zone">Drag & Drop File Here</div>
+		<div id="preview" class="preview-box"></div>
+		<input type="file" id="fileInput" hidden>
+
+		<select id="formatSelect" disabled>
+			<option value="">Select conversion format</option>
+		</select>
+		<button id="convertBtn" disabled>Convert</button>
+	</div>
+
+	<script>
+		const dropZone = document.getElementById('drop-zone');
+		const fileInput = document.getElementById('fileInput');
+		const formatSelect = document.getElementById('formatSelect');
+		const convertBtn = document.getElementById('convertBtn');
+		let uploadedFile = null;
+
+		const formatOptions = {
+			image: ['jpg', 'png', 'webp', 'gif'],
+			audio: ['mp3', 'wav', 'flac', 'aac'],
+			video: ['mp4', 'mov', 'avi', 'webm'],
+			document: ['pdf', 'txt']
+		};
+
+		dropZone.addEventListener('click', () => fileInput.click());
+
+		dropZone.addEventListener('dragover', e => {
+			e.preventDefault();
+			dropZone.classList.add('active');
+		});
+
+		dropZone.addEventListener('dragleave', () => {
+			dropZone.classList.remove('active');
+		});
+
+		dropZone.addEventListener('drop', async e => {
+			e.preventDefault();
+			dropZone.classList.remove('active');
+			const file = e.dataTransfer.files[0];
+			await uploadFile(file);
+		});
+
+		fileInput.addEventListener('change', async () => {
+			const file = fileInput.files[0];
+			await uploadFile(file);
+		});
+
+		function formatFileSize(size) {
+			if (size < 1024) return `${size} B`;
+			else if (size < 1048576) return `${(size / 1024).toFixed(2)} KB`;
+			else if (size < 1073741824) return `${(size / 1048576).toFixed(2)} MB`;
+			else if (size < 1099511627776) return `${(size / 1073741824).toFixed(2)} GB`;
+			else return `${(size / 1099511627776).toFixed(2)} TB`;
+		}
+
+		async function uploadFile(file) {
+			const formData = new FormData();
+			formData.append('file', file);
+			const res = await fetch('/upload', {
+				method: 'POST',
+				body: formData
+			});
+			const data = await res.json();
+			uploadedFile = data.filename;
+
+			if (data.type && formatOptions[data.type]) {
+				formatSelect.innerHTML = `<option value="">Select format</option>`;
+				formatOptions[data.type].forEach(fmt => {
+					if (!uploadedFile.endsWith(fmt))
+						formatSelect.innerHTML += `<option value="${fmt}">${fmt.toUpperCase()}</option>`;
+				});
+				formatSelect.disabled = false;
+			} else {
+				formatSelect.innerHTML = `<option value="">Unsupported file</option>`;
+				formatSelect.disabled = true;
+			}
+
+			if (data.type && formatOptions[data.type]) {
+				convertBtn.classList.remove("active");
+			}
+
+			showPreview(file);
+
+			const preview = document.getElementById("preview");
+			const fileInfo = document.createElement('div');
+			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
+			fileInfo.style.marginTop = "10px";
+			fileInfo.style.fontSize = "14px";
+			fileInfo.style.color = "#555";
+			preview.appendChild(fileInfo);
+		}
+
+		function showPreview(file) {
+			const preview = document.getElementById("preview");
+			preview.innerHTML = "";
+
+			const ext = file.name.split('.').pop().toLowerCase();
+
+			if (formatOptions.image.includes(ext)) {
+				const img = document.createElement('img');
+				img.src = URL.createObjectURL(file);
+				img.style.maxWidth = "100%";
+				img.style.borderRadius = "8px";
+				preview.appendChild(img);
+			} else if (formatOptions.video.includes(ext)) {
+				const video = document.createElement('video');
+				video.src = URL.createObjectURL(file);
+				video.controls = true;
+				video.style.maxWidth = "100%";
+				preview.appendChild(video);
+			} else if (formatOptions.audio.includes(ext)) {
+				const audio = document.createElement('audio');
+				audio.src = URL.createObjectURL(file);
+				audio.controls = true;
+				preview.appendChild(audio);
+			} else if (['txt'].includes(ext)) {
+				const reader = new FileReader();
+				reader.onload = function(e) {
+					const text = e.target.result;
+					let lines = text.split('\n').map(line => {
+						return line.length > 50 ? line.substring(0, 50) + '...' : line;
+					});
+					if (lines.length > 30) {
+						lines = lines.slice(0, 30);
+						lines.push('...');
+					}
+					const pre = document.createElement('pre');
+					pre.textContent = lines.join('\n');
+					pre.style.whiteSpace = "pre-wrap";
+					pre.style.wordBreak = "break-word";
+					preview.appendChild(pre);
+				};
+				reader.readAsText(file);
+			} else if (['pdf'].includes(ext)) {
+				const pdfFrame = document.createElement('iframe');
+				pdfFrame.src = URL.createObjectURL(file);
+				pdfFrame.style.width = "100%";
+				pdfFrame.style.height = "500px";
+				preview.appendChild(pdfFrame);
+			} else {
+				preview.textContent = "Preview not available for this file type.";
+			}
+		}
+
+		formatSelect.addEventListener('change', () => {
+			const ready = formatSelect.value && uploadedFile;
+			convertBtn.disabled = !ready;
+			convertBtn.classList.toggle("active", ready);
+		});
+
+		convertBtn.addEventListener('click', async () => {
+			const formData = new FormData();
+			formData.append('filename', uploadedFile);
+			formData.append('target_format', formatSelect.value);
+
+			const res = await fetch('/convert', {
+				method: 'POST',
+				body: formData
+			});
+
+			const blob = await res.blob();
+			const a = document.createElement('a');
+			a.href = URL.createObjectURL(blob);
+			a.download = uploadedFile.split('.').slice(0, -1).join('.') + '.' + formatSelect.value;
+			a.click();
+		});
+	</script>
+</body>
+</html>
