@@ -1,0 +1,66 @@
+body {
+	margin: 0;
+	font-family: 'Segoe UI', sans-serif;
+	background: #121212;
+	color: #f1f1f1;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	height: 100vh;
+}
+
+.container {
+	background: #1f1f1f;
+	padding: 30px;
+	border-radius: 12px;
+	box-shadow: 0 0 20px rgba(255, 255, 255, 0.05);
+	text-align: center;
+	width: 400px;
+}
+
+h1 {
+	margin-bottom: 20px;
+	color: #00ffc3;
+}
+
+.drop-zone {
+	border: 2px dashed #555;
+	padding: 30px;
+	border-radius: 10px;
+	cursor: pointer;
+	margin-bottom: 20px;
+}
+
+.drop-zone.active {
+	border-color: #00ffc3;
+	background: #1a1a1a;
+}
+
+select, button {
+	width: 100%;
+	margin-top: 10px;
+	padding: 10px;
+	background: #222;
+	border: 1px solid #555;
+	border-radius: 6px;
+	color: white;
+	font-size: 16px;
+}
+
+button:disabled {
+	background: #444;
+	color: #888;
+	cursor: not-allowed;
+}
+
+.preview-box {
+	margin-top: 15px;
+	margin-bottom: 15px;
+}
+
+button.active {
+	background: #00ffc3;
+	color: #000;
+	border-color: #00ffc3;
+	cursor: pointer;
+}
