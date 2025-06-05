@@ -56,7 +56,6 @@ python ./app.py
 
 <summary>💻 Command Line Arguments</summary>
 
-**Command Line Arguments**:
 |	**Argument**		|	**Description**			|	**Default**	|
 |	:---:			|	:---:				|	:---:		|
 |	`-h & --help`		|	Help menu			|			|
