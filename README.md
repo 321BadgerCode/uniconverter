@@ -47,7 +47,6 @@ pip install -r requirements.txt
 
 To use the program, you can either run it in python or within a [Docker](https://www.docker.com/) container:
 
-
 ### Using Python
 
 1. **Run the program**
