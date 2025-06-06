@@ -2,3 +2,4 @@ flask
 Pillow
 pdfminer.six
 fpdf
+gunicorn

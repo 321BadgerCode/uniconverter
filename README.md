@@ -45,11 +45,57 @@ pip install -r requirements.txt
 
 ## 📈 Usage
 
-To use the program, there is only **one** step!
+To use the program, you can either run it in python or within a [Docker](https://www.docker.com/) container:
+
+
+### Using Python
 
 1. **Run the program**
 ```sh
 python ./app.py
+```
+
+### Using Docker
+
+<details>
+
+<summary>📝 Docker Notes</summary>
+
+1. Ensure you have Docker installed on your system. You can find installation instructions on the [Docker website](https://docs.docker.com/get-docker/).
+2. The program uses Docker Compose to manage the container. Make sure you have Docker Compose installed as well.
+3. The program uses the `docker compose` command, which is the newer syntax for Docker Compose. If you have an older version of Docker Compose, you may need to use `docker-compose` instead.
+4. Some helpful commands:
+```sh
+groups # Check your user groups (you should see `docker` in the list)
+newgrp docker # Create a new group session with the `docker` group
+sudo usermod -aG docker $USER && sudo reboot # Add your user to the Docker group and reboot
+```
+
+</details>
+
+1. **Build the Docker image**
+```sh
+docker compose up
+docker compose up -d # Run in detached mode
+```
+
+2. **Access the web interface**
+Go to [http://localhost:5000](http://127.0.0.1:5000) in a web browser to access the Uniconverter web interface.
+```sh
+firefox http://127.0.0.1:5000
+```
+
+3. **Stop the Docker container (if ran in detached mode)**
+```sh
+docker ps # List running containers
+docker compose down
+```
+
+4. **Cleanup (optional)**
+```sh
+docker compose down --volumes --remove-orphans # Remove volumes and orphan containers
+docker images # List docker images
+docker rmi uniconverter-web # Remove the Docker image
 ```
 
 <details>

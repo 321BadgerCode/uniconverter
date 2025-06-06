@@ -1,5 +1,5 @@
 import os
-import argparse
+import sys
 import subprocess
 import uuid
 from flask import Flask, render_template, request, send_file, jsonify
@@ -17,7 +17,11 @@ doc_exts = ["pdf", "txt"]
 is_backup_enabled = False
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+if os.geteuid() == 0:
+	os.chmod(UPLOAD_FOLDER, 0o777)
 os.makedirs(CONVERTED_FOLDER, exist_ok=True)
+if os.geteuid() == 0:
+	os.chmod(CONVERTED_FOLDER, 0o777)
 
 @app.route('/')
 def index():
@@ -122,19 +126,28 @@ def detect_type(ext):
 	else:
 		return "unknown"
 
-if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description="File Converter Service")
-	parser.add_argument("--cleanup", action="store_true", help="Delete uploaded and converted files on exit")
-	args = parser.parse_args()
-
-	app.run(debug=True)
-
-	if args.cleanup:
-		folders = [UPLOAD_FOLDER, CONVERTED_FOLDER]
-		for folder in folders:
-			for filename in os.listdir(folder):
-				file_path = os.path.join(folder, filename)
-				try:
+def cleanup_files():
+	for folder in [UPLOAD_FOLDER, CONVERTED_FOLDER]:
+		for filename in os.listdir(folder):
+			file_path = os.path.join(folder, filename)
+			try:
+				if os.access(file_path, os.W_OK):
 					os.remove(file_path)
-				except Exception as e:
-					print(f"Error deleting {file_path}: {e}")
+			except Exception as e:
+				print(f"Error deleting {file_path}: {e}")
+
+if __name__ == "__main__":
+	if "-h" in sys.argv or "--help" in sys.argv:
+		print(f"Usage: python {sys.argv[0]} [--cleanup]")
+		print("\nOptions:")
+		print("  --cleanup\t\tDelete uploaded and converted files on exit")
+		sys.exit(0)
+	elif "--cleanup" in sys.argv:
+		os.environ["UNICONVERTER_CLEANUP"] = '1'
+
+	if os.environ.get("UNICONVERTER_CLEANUP") == '1':
+		import signal
+		signal.signal(signal.SIGTERM, lambda signum, frame: cleanup_files())
+		signal.signal(signal.SIGINT, lambda signum, frame: cleanup_files())
+
+	app.run(host='0.0.0.0', port=5000)
