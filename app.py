@@ -9,10 +9,10 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "converted"
 
-image_exts = ['jpg', 'jpeg', 'png', 'webp', 'gif']
-audio_exts = ['mp3', 'wav', 'flac', 'aac']
-video_exts = ['mp4', 'mov', 'avi', 'webm']
-doc_exts = ['pdf', 'txt']
+image_exts = ["jpg", "jpeg", "png", "webp", "gif"]
+audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg"]
+video_exts = ["mp4", "mov", "avi", "webm"]
+doc_exts = ["pdf", "txt"]
 
 is_backup_enabled = False
 
@@ -23,9 +23,9 @@ os.makedirs(CONVERTED_FOLDER, exist_ok=True)
 def index():
 	return render_template("index.html")
 
-@app.route('/upload', methods=['POST'])
+@app.route("/upload", methods=["POST"])
 def upload():
-	file = request.files['file']
+	file = request.files["file"]
 	if file:
 		filename = secure_filename(file.filename)
 		ext = os.path.splitext(filename)[1].lower()[1::]
@@ -33,14 +33,14 @@ def upload():
 		file.save(path)
 
 		file_type = detect_type(ext)
-		return {'filename': filename, 'type': file_type}
-	return {'error': 'No file uploaded'}
+		return {"filename": filename, "type": file_type}
+	return {"error": "No file uploaded"}
 
-@app.route('/convert', methods=['POST'])
+@app.route("/convert", methods=["POST"])
 def convert():
 	data = request.form
-	filename = data['filename']
-	target_format = data['target_format']
+	filename = data["filename"]
+	target_format = data["target_format"]
 	input_path = os.path.join(UPLOAD_FOLDER, filename)
 	ext = os.path.splitext(filename)[1].lower()[1::]
 	base = uuid.uuid4().hex
@@ -51,34 +51,25 @@ def convert():
 		try:
 			from PIL import Image
 			img = Image.open(input_path).convert("RGB")
-			if target_format in ['jpg', 'jpeg']:
+			if target_format in ["jpg", "jpeg"]:
 				img = img.convert("RGB")
 				target_format = "jpeg"
 			img.save(output_path, target_format.upper())
-		except ImportError:
+		except ImportError as e:
 			print("Pillow error: PIL module not found")
+			print("Error details:", e)
 			return jsonify({"error": "Pillow is required for image conversion."}), 500
 
 	elif ext in audio_exts and target_format in audio_exts:
-		try:
-			from pydub import AudioSegment
-			sound = AudioSegment.from_file(input_path)
-			sound.export(output_path, format=target_format)
-		except ImportError:
-			print("Pydub error: pydub module not found")
-			return jsonify({"error": "pydub is required for audio conversion."}), 500
+		args = ["ffmpeg", "-y", "-i", input_path, "-vn", output_path]
+
+		out = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+		if out.returncode != 0:
+			print("FFmpeg error:", out.stderr)
+			return jsonify({"error": "Audio conversion failed."}), 500
 
 	elif ext in video_exts and target_format in video_exts:
-		# codec_map = {
-		# 	'mp4': ['-c:v', 'libx264', '-c:a', 'aac'],
-		# 	'mov': ['-c:v', 'libx264', '-c:a', 'aac'],
-		# 	'avi': ['-c:v', 'mpeg4',  '-c:a', 'mp3'],
-		# 	'webm': ['-c:v', 'libvpx', '-c:a', 'libvorbis']
-		# }
-
-		# args = ['ffmpeg', '-i', input_path, '-preset', 'fast'] + codec_map[target_format] + [output_path]
-
-		args = ['ffmpeg', '-i', input_path, output_path]
+		args = ["ffmpeg", "-y", "-i", input_path, output_path]
 
 		try:
 			subprocess.run(args, check=True)
@@ -87,27 +78,29 @@ def convert():
 			return jsonify({"error": "Video conversion failed."}), 500
 
 	elif ext in doc_exts and target_format in doc_exts:
-		if ext == 'pdf' and target_format == 'txt':
+		if ext == "pdf" and target_format == "txt":
 			try:
 				from pdfminer.high_level import extract_text
 				text = extract_text(input_path)
-				with open(output_path, 'w', encoding='utf-8') as f:
+				with open(output_path, 'w', encoding="utf-8") as f:
 					f.write(text)
-			except ImportError:
+			except ImportError as e:
 				print("PDFMiner error: pdfminer.six module not found")
+				print("Error details:", e)
 				return jsonify({"error": "pdfminer.six is required for PDF to TXT conversion."}), 500
-		elif ext == 'txt' and target_format == 'pdf':
+		elif ext == "txt" and target_format == "pdf":
 			try:
 				from fpdf import FPDF
 				pdf = FPDF()
 				pdf.add_page()
 				pdf.set_font("Arial", size=12)
-				with open(input_path, 'r', encoding='utf-8') as f:
+				with open(input_path, 'r', encoding="utf-8") as f:
 					for line in f:
 						pdf.cell(200, 10, txt=line, ln=True)
 				pdf.output(output_path)
-			except ImportError:
+			except ImportError as e:
 				print("FPDF error: fpdf module not found")
+				print("Error details:", e)
 				return jsonify({"error": "fpdf is required for TXT to PDF conversion."}), 500
 		else:
 			return jsonify({"error": "Unsupported document conversion"}), 400
@@ -119,19 +112,19 @@ def convert():
 
 def detect_type(ext):
 	if ext in image_exts:
-		return 'image'
+		return "image"
 	elif ext in audio_exts:
-		return 'audio'
+		return "audio"
 	elif ext in video_exts:
-		return 'video'
+		return "video"
 	elif ext in doc_exts:
-		return 'document'
+		return "document"
 	else:
-		return 'unknown'
+		return "unknown"
 
-if __name__ == '__main__':
-	parser = argparse.ArgumentParser(description='File Converter Service')
-	parser.add_argument('--cleanup', action='store_true', help='Delete uploaded and converted files on exit')
+if __name__ == "__main__":
+	parser = argparse.ArgumentParser(description="File Converter Service")
+	parser.add_argument("--cleanup", action="store_true", help="Delete uploaded and converted files on exit")
 	args = parser.parse_args()
 
 	app.run(debug=True)
