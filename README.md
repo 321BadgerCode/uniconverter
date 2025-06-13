@@ -114,6 +114,16 @@ docker rmi uniconverter-web # Remove the Docker image
 	<img src="./asset/ex.png" alt="Example" width="600">
 </p>
 
+## 🤝 Contributing
+
+Contributions are welcome! If you have any suggestions or improvements, feel free to open an issue or submit a pull request. Please run the following to setup the development environment:
+```sh
+chmod +x ./setup_dev.sh
+./setup_dev.sh
+```
+
+This establishes the Git commit template and commitmsg hook, which ensures that all commits follow the project's commit message guidelines.
+
 ## 📜 License
 
 [LICENSE](./LICENSE)
