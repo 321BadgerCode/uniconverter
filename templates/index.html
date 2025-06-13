@@ -8,10 +8,13 @@
 <body>
 	<div class="container">
 		<h1>Universal File Converter</h1>
+
+		<!-- Upload area -->
 		<div id="drop-zone" class="drop-zone">Drag & Drop File Here</div>
 		<div id="preview" class="preview-box"></div>
 		<input type="file" id="fileInput" hidden>
 
+		<!-- Conversion area -->
 		<select id="formatSelect" disabled>
 			<option value="">Select conversion format</option>
 		</select>
@@ -19,12 +22,14 @@
 	</div>
 
 	<script>
+		// Get elements
 		const dropZone = document.getElementById("drop-zone");
 		const fileInput = document.getElementById("fileInput");
 		const formatSelect = document.getElementById("formatSelect");
 		const convertBtn = document.getElementById("convertBtn");
 		let uploadedFile = null;
 
+		// Define supported formats
 		const formatOptions = {
 			image: ["jpg", "jpeg", "png", "webp", "gif"],
 			audio: ["mp3", "wav", "flac", "aac", "m4a"],
@@ -32,6 +37,7 @@
 			document: ["pdf", "txt"]
 		};
 
+		// Set up event listeners
 		dropZone.addEventListener("click", () => fileInput.click());
 
 		dropZone.addEventListener("dragover", e => {
@@ -55,6 +61,34 @@
 			await uploadFile(file);
 		});
 
+		formatSelect.addEventListener("change", () => {
+			const ready = formatSelect.value && uploadedFile;
+			convertBtn.disabled = !ready;
+			convertBtn.classList.toggle("active", ready);
+		});
+
+		convertBtn.addEventListener("click", async () => {
+			const formData = new FormData();
+			formData.append("filename", uploadedFile);
+			formData.append("target_format", formatSelect.value);
+
+			const res = await fetch("/convert", {
+				method: "POST",
+				body: formData
+			});
+
+			const blob = await res.blob();
+			const a = document.createElement('a');
+			a.href = URL.createObjectURL(blob);
+			a.download = uploadedFile.split('.').slice(0, -1).join('.') + '.' + formatSelect.value;
+			a.click();
+		});
+
+		/**
+		 * @brief Formats file size into a human-readable string.
+		 * @param {number} size - The size of the file in bytes.
+		 * @return {string} A formatted string representing the file size.
+		 */
 		function formatFileSize(size) {
 			if (size < 1024) return `${size} B`;
 			else if (size < 1048576) return `${(size / 1024).toFixed(2)} KB`;
@@ -63,7 +97,12 @@
 			else return `${(size / 1099511627776).toFixed(2)} TB`;
 		}
 
+		/**
+		 * @brief Uploads the selected file to the server and updates the UI.
+		 * @param {File} file - The file to be uploaded.
+		 */
 		async function uploadFile(file) {
+			// Get form data
 			const formData = new FormData();
 			formData.append("file", file);
 			const res = await fetch("/upload", {
@@ -73,6 +112,7 @@
 			const data = await res.json();
 			uploadedFile = data.filename;
 
+			// Update format select options
 			if (data.type && formatOptions[data.type]) {
 				formatSelect.innerHTML = `<option value="">Select format</option>`;
 				formatOptions[data.type].forEach(fmt => {
@@ -85,12 +125,13 @@
 				formatSelect.disabled = true;
 			}
 
+			// Update convert button state
 			if (data.type && formatOptions[data.type]) {
 				convertBtn.classList.remove("active");
 			}
 
+			// Display file preview and info
 			showPreview(file);
-
 			const preview = document.getElementById("preview");
 			const fileInfo = document.createElement("div");
 			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
@@ -100,12 +141,17 @@
 			preview.appendChild(fileInfo);
 		}
 
+		/**
+		 * @brief Displays a preview of the uploaded file based on its type.
+		 * @param {File} file - The file to be previewed.
+		 */
 		function showPreview(file) {
 			const preview = document.getElementById("preview");
 			preview.innerHTML = "";
 
 			const ext = file.name.split('.').pop().toLowerCase();
 
+			// Check file type and create appropriate preview
 			if (formatOptions.image.includes(ext)) {
 				const img = document.createElement("img");
 				img.src = URL.createObjectURL(file);
@@ -151,29 +197,6 @@
 				preview.textContent = "Preview not available for this file type.";
 			}
 		}
-
-		formatSelect.addEventListener("change", () => {
-			const ready = formatSelect.value && uploadedFile;
-			convertBtn.disabled = !ready;
-			convertBtn.classList.toggle("active", ready);
-		});
-
-		convertBtn.addEventListener("click", async () => {
-			const formData = new FormData();
-			formData.append("filename", uploadedFile);
-			formData.append("target_format", formatSelect.value);
-
-			const res = await fetch("/convert", {
-				method: "POST",
-				body: formData
-			});
-
-			const blob = await res.blob();
-			const a = document.createElement('a');
-			a.href = URL.createObjectURL(blob);
-			a.download = uploadedFile.split('.').slice(0, -1).join('.') + '.' + formatSelect.value;
-			a.click();
-		});
 	</script>
 </body>
 </html>

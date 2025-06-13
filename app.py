@@ -9,13 +9,16 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "converted"
 
+# Declare supported file extensions
 image_exts = ["jpg", "jpeg", "png", "webp", "gif"]
 audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg"]
 video_exts = ["mp4", "mov", "avi", "webm"]
 doc_exts = ["pdf", "txt"]
 
+# Declare command line argument variable
 is_backup_enabled = False
 
+# Create folders if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 if os.geteuid() == 0:
 	os.chmod(UPLOAD_FOLDER, 0o777)
@@ -25,14 +28,20 @@ if os.geteuid() == 0:
 
 @app.route('/')
 def index():
+	"""
+	Render the main page of the application.
+	"""
 	return render_template("index.html")
 
 @app.route("/upload", methods=["POST"])
 def upload():
+	"""
+	Handle file upload.
+	"""
 	file = request.files["file"]
 	if file:
 		filename = secure_filename(file.filename)
-		ext = os.path.splitext(filename)[1].lower()[1::]
+		ext = os.path.splitext(filename)[1].lower()[1::] # Get the file extension without the dot
 		path = os.path.join(UPLOAD_FOLDER, filename)
 		file.save(path)
 
@@ -42,11 +51,14 @@ def upload():
 
 @app.route("/convert", methods=["POST"])
 def convert():
+	"""
+	Handle file conversion.
+	"""
 	data = request.form
 	filename = data["filename"]
 	target_format = data["target_format"]
 	input_path = os.path.join(UPLOAD_FOLDER, filename)
-	ext = os.path.splitext(filename)[1].lower()[1::]
+	ext = os.path.splitext(filename)[1].lower()[1::] # Get the file extension without the dot
 	base = uuid.uuid4().hex
 	output_filename = f"{base}.{target_format}"
 	output_path = os.path.join(CONVERTED_FOLDER, output_filename)
@@ -55,6 +67,7 @@ def convert():
 		try:
 			from PIL import Image
 			img = Image.open(input_path).convert("RGB")
+			# JPEG conversion requires RGB mode
 			if target_format in ["jpg", "jpeg"]:
 				img = img.convert("RGB")
 				target_format = "jpeg"
@@ -115,6 +128,9 @@ def convert():
 	return send_file(output_path, as_attachment=True)
 
 def detect_type(ext):
+	"""
+	Detect the type of file based on its extension.
+	"""
 	if ext in image_exts:
 		return "image"
 	elif ext in audio_exts:
@@ -127,6 +143,9 @@ def detect_type(ext):
 		return "unknown"
 
 def cleanup_files():
+	"""
+	Cleanup uploaded and converted files.
+	"""
 	for folder in [UPLOAD_FOLDER, CONVERTED_FOLDER]:
 		for filename in os.listdir(folder):
 			file_path = os.path.join(folder, filename)
