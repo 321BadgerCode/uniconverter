@@ -1,0 +1,15 @@
+# Commit message format:
+# - :<type>: <action> <what> <context>.
+#
+# Keywords:
+# - Types: feat, bug, docs, refactor, chore, build
+# - Actions: add, update, fix
+# - Preps: in, with, for
+#
+# Examples:
+# :feat: add login form in authentication module
+# :bug: fix crash for empty password field
+# :docs: update readme
+#
+# Gitmojis will be auto-added for you.
+#

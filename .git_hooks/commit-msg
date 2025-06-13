@@ -1,0 +1,74 @@
+#!/bin/bash
+
+msg_file="$1"
+tmp_file="$(mktemp)"
+
+# Allowed keywords
+types="feat|bug|docs|refactor|chore|build"
+actions="add|update|fix"
+preps="in|with|for"
+
+# Gitmoji map
+declare -A EMOJIS=(
+	[feat]="✨"
+	[bug]="🐛"
+	[docs]="📝"
+	[refactor]="♻️"
+	[chore]="🔧"
+	[build]="🏗️"
+)
+
+valid_partial_regex="^- :(${types}): (${actions}) .+"
+valid_line_regex="^- :(${types}): (${actions}) .+( (${preps}) .+)?\.$"
+
+# Loop over each line and validate
+while IFS= read -r line; do
+	trimmed=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+	# Skip empty lines or comment lines
+	if [[ -z "$trimmed" || "$trimmed" == \#* ]]; then
+		echo "$line" >> "$tmp_file"
+		continue
+	fi
+
+	# Normalize the line
+	if [[ ! "$trimmed" =~ ^- ]]; then
+		trimmed="- $trimmed"
+	fi
+	if [[ ! "$trimmed" =~ \.$ ]]; then
+		trimmed="$trimmed."
+	fi
+
+	if [[ "$trimmed" =~ $valid_partial_regex ]]; then
+		if [[ "$trimmed" =~ $valid_line_regex ]]; then
+			type="${BASH_REMATCH[1]//:/}"
+			rest="${trimmed:2}"
+			rest="${rest#*: }"
+			rest="$(tr '[:lower:]' '[:upper:]' <<< "${rest:0:1}")${rest:1}"
+			emoji="${EMOJIS[$type]}"
+			echo "- $emoji ${rest}" >> "$tmp_file"
+		else
+			echo "❌ Invalid commit message line:"
+			echo -e "\t$trimmed"
+			echo ""
+			echo "Expected format:"
+			echo -e "\t- :<type>: <action> <something> [in|with|for <something>]."
+			echo ""
+			echo -e "Allowed types:\t\t$types"
+			echo -e "Allowed actions:\t\t$actions"
+			echo "Example:"
+			echo -e "\t- :feat: add dark mode in settings panel."
+			rm "$tmp_file"
+			exit 1
+		fi
+	else
+		echo "❌ Commit line must start with a valid type and action:"
+		echo -e "\t$trimmed"
+		echo "Expected format:"
+		echo -e "\t- :<type>: <action> ..."
+		rm "$tmp_file"
+		exit 1
+	fi
+done < "$msg_file"
+
+mv "$tmp_file" "$msg_file"
