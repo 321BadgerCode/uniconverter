@@ -10,9 +10,9 @@ UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "converted"
 
 # Declare supported file extensions
-image_exts = ["jpg", "jpeg", "png", "webp", "gif"]
+image_exts = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg"]
 audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg"]
-video_exts = ["mp4", "mov", "avi", "webm"]
+video_exts = ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv"]
 doc_exts = ["pdf", "txt"]
 
 # Declare command line argument variable
@@ -66,18 +66,66 @@ def convert():
 	if ext in image_exts and target_format in image_exts:
 		try:
 			from PIL import Image
-			img = Image.open(input_path).convert("RGB")
-			# JPEG conversion requires RGB mode
+			img = Image.open(input_path)
+			# Pillow only knows jpeg, not jpg
 			if target_format in ["jpg", "jpeg"]:
-				img = img.convert("RGB")
 				target_format = "jpeg"
-			img.save(output_path, target_format.upper())
+			# For ico files, save image with correct size
+			elif target_format == "ico":
+				img = img.convert("RGBA")
+
+				# Ensure the image is square
+				if img.size[0] != img.size[1]:
+					min_size = min(img.size)
+					img = img.resize((min_size, min_size), Image.Resampling.LANCZOS)
+				# Resize into closest 32 multiple square
+				size = 32
+				while size < img.size[0]:
+					size *= 2
+				img = img.resize((size, size), Image.Resampling.LANCZOS)
+				img.save(output_path, target_format.upper())
+			# For SVG, we need to vectorize
+			elif target_format == "svg":
+				try:
+					import cv2
+					import svgwrite
+					import numpy as np
+
+					# Convert image to numpy array
+					img_array = np.array(img)
+
+					# Convert to grayscale
+					gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+
+					# Threshold the image to get a binary image
+					_, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
+
+					# Find contours
+					contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+					# Create SVG canvas
+					height, width = binary.shape
+					dwg = svgwrite.Drawing(output_path, size=(width, height))
+
+					# Draw contours
+					for contour in contours:
+						points = [(int(x), int(y)) for [[x, y]] in contour]
+						if len(points) > 2:
+							dwg.add(dwg.polygon(points, fill='black', stroke='black'))
+					dwg.save()
+				except ImportError as e:
+					print("Vectorizer error: vectorizer module not found")
+					print("Error details:", e)
+					return jsonify({"error": "vectorizer is required for SVG conversion."}), 500
+			else:
+				img = img.convert("RGB")
+				img.save(output_path, target_format.upper())
 		except ImportError as e:
 			print("Pillow error: PIL module not found")
 			print("Error details:", e)
 			return jsonify({"error": "Pillow is required for image conversion."}), 500
 
-	elif ext in audio_exts and target_format in audio_exts:
+	elif (ext in audio_exts and target_format in audio_exts) or (ext in video_exts and target_format in audio_exts):
 		args = ["ffmpeg", "-y", "-i", input_path, "-vn", output_path]
 
 		out = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
