@@ -1,5 +1,8 @@
 flask
-Pillow
+pillow
+opencv-python
+svgwrite
+numpy
 pdfminer.six
 fpdf
 gunicorn
