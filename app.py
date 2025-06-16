@@ -4,6 +4,7 @@ import subprocess
 import uuid
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
+import zipfile
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
@@ -49,16 +50,14 @@ def upload():
 		return {"filename": filename, "type": file_type}
 	return {"error": "No file uploaded"}
 
-@app.route("/convert", methods=["POST"])
-def convert():
+def convert_one(file):
 	"""
-	Handle file conversion.
+	Convert a single file.
 	"""
-	data = request.form
-	filename = data["filename"]
-	target_format = data["target_format"]
-	input_path = os.path.join(UPLOAD_FOLDER, filename)
+	filename = file["filename"]
 	ext = os.path.splitext(filename)[1].lower()[1::] # Get the file extension without the dot
+	target_format = file["target_format"]
+	input_path = os.path.join(UPLOAD_FOLDER, filename)
 	base = uuid.uuid4().hex
 	output_filename = f"{base}.{target_format}"
 	output_path = os.path.join(CONVERTED_FOLDER, output_filename)
@@ -69,7 +68,9 @@ def convert():
 			img = Image.open(input_path)
 			# Pillow only knows jpeg, not jpg
 			if target_format in ["jpg", "jpeg"]:
+				img = img.convert("RGB")
 				target_format = "jpeg"
+				img.save(output_path, target_format.upper())
 			# For ico files, save image with correct size
 			elif target_format == "ico":
 				img = img.convert("RGBA")
@@ -172,8 +173,43 @@ def convert():
 
 	else:
 		return {"error": "Unsupported conversion"}
+	
+	return output_filename
 
-	return send_file(output_path, as_attachment=True)
+# TODO: use BytesIO and give data to convert_one, then once converted, delete file in UPLOAD_FOLDER. on last file, remove the UPLOAD_FOLDER
+	# no cleanup
+@app.route("/convert", methods=["POST"])
+def convert():
+	"""
+	Convert uploaded files to the target format.
+	"""
+	files = request.files.getlist("files")
+	target_format = request.form.get("target_format")
+	if not files or not target_format:
+		return jsonify({"error": "No files or target format specified"}), 400
+
+	# Convert each file
+	converted_files = []
+	for file in files:
+		if file:
+			filename = secure_filename(file.filename)
+			path = os.path.join(UPLOAD_FOLDER, filename)
+			file.save(path)
+			file_info = {"filename": filename, "target_format": target_format}
+			result = convert_one(file_info)
+			converted_files.append(result)
+
+	# Zip converted files if more than one
+	if len(converted_files) > 1:
+		zip_filename = f"converted_{uuid.uuid4().hex}.zip"
+		zip_path = os.path.join(CONVERTED_FOLDER, zip_filename)
+		with zipfile.ZipFile(zip_path, 'w') as zipf:
+			for converted_file in converted_files:
+				file_path = os.path.join(CONVERTED_FOLDER, converted_file)
+				zipf.write(file_path, arcname=converted_file)
+		return send_file(zip_path, as_attachment=True)
+	else:
+		return send_file(os.path.join(CONVERTED_FOLDER, converted_files[0]), as_attachment=True)
 
 def detect_type(ext):
 	"""
