@@ -1,0 +1,32 @@
+name: 🐛 Bug Report
+description: Report a bug in the project.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thanks for reporting!
+        Please describe the bug to the best of your ability, so that we can better understand it.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Brief Summary
+      description: Short summary of the bug.
+      placeholder: "e.g. App crashes when clicking the Save button."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: What did you do to trigger the bug?
+      placeholder: |
+        1. Open the app.
+        2. Go to the Settings page.
+        3. Click the Save button.
+        4. App crashes.
+    validations:
+      required: false
