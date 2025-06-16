@@ -11,8 +11,9 @@
 
 		<!-- Upload area -->
 		<div id="drop-zone" class="drop-zone">Drag & Drop File Here</div>
-		<div id="preview" class="preview-box"></div>
-		<input type="file" id="fileInput" hidden>
+		<button onclick="clearAll()">Clear all</button>
+		<div id="file-container"></div>
+		<input type="file" id="fileInput" accept="image/*,video/*,audio/*,.pdf,.txt" hidden/>
 
 		<!-- Conversion area -->
 		<select id="formatSelect" disabled>
@@ -24,10 +25,10 @@
 	<script>
 		// Get elements
 		const dropZone = document.getElementById("drop-zone");
-		const fileInput = document.getElementById("fileInput");
 		const formatSelect = document.getElementById("formatSelect");
 		const convertBtn = document.getElementById("convertBtn");
-		let uploadedFile = null;
+		let files = [];
+		let currentType = null;
 
 		// Define supported formats
 		const formatOptions = {
@@ -36,6 +37,46 @@
 			video: ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv"],
 			document: ["pdf", "txt"]
 		};
+
+		/**
+		 * @brief Creates file item.
+		 * @param {File} file - The file to be displayed.
+		 */
+		function createFileItem(file) {
+			// Add file to the list
+			files.push(file);
+
+			// Create a new file input and preview area
+			const fileContainer = document.getElementById("file-container");
+			const newFileDiv = document.createElement("div");
+			newFileDiv.className = "file-item";
+			newFileDiv.id = file.name.replace(/\s+/g, '_').toLowerCase();
+			newFileDiv.style.position = "relative";
+			newFileDiv.style.display = "inline-block";
+			fileContainer.appendChild(newFileDiv);
+			const previewDiv = document.createElement("div");
+			previewDiv.id = "preview";
+			previewDiv.style.marginTop = "20px";
+			newFileDiv.appendChild(previewDiv);
+			const clearBtn = document.createElement("button");
+			clearBtn.textContent = "X";
+			clearBtn.style.fontSize = "30px";
+			clearBtn.style.backgroundColor = "transparent";
+			clearBtn.style.color = "red";
+			clearBtn.style.border = "none";
+			clearBtn.style.position = "absolute";
+			clearBtn.style.paddingLeft = "0px";
+			clearBtn.style.top = "0";
+			clearBtn.addEventListener("click", () => {
+				files = files.filter(f => f.name !== file.name);
+				currentType = files.length > 0 ? files[0].type.split('/')[0] : null;
+				fileContainer.removeChild(newFileDiv);
+			});
+			newFileDiv.appendChild(clearBtn);
+
+			// Set current type based on file type
+			currentType = file.type.split('/')[0];
+		}
 
 		// Set up event listeners
 		dropZone.addEventListener("click", () => fileInput.click());
@@ -50,26 +91,53 @@
 		});
 
 		dropZone.addEventListener("drop", async e => {
+			// Prevent default behavior and remove active class
 			e.preventDefault();
 			dropZone.classList.remove("active");
+
+			// Add drag and drop functionality
 			const file = e.dataTransfer.files[0];
+			if (!file) return;
+
+			// If the file is of a different type than the current type, show a warning
+			if (files.length > 0 && file.type.split('/')[0] !== currentType) {
+				alert("You are uploading a different type of file. The conversion files must be of type \"" + currentType + "\".");
+				return;
+			}
+
+			// Create file item and upload
+			createFileItem(file);
 			await uploadFile(file);
 		});
 
 		fileInput.addEventListener("change", async () => {
+			// Get file
+			if (fileInput.files.length === 0) return;
 			const file = fileInput.files[0];
+
+			// If the file is of a different type than the current type, show a warning
+			if (files.length > 0 && file.type.split('/')[0] !== currentType) {
+				alert("You are uploading a different type of file. The conversion files must be of type \"" + currentType + "\".");
+				return;
+			}
+
+			// Create file item and upload
+			createFileItem(file);
 			await uploadFile(file);
 		});
 
 		formatSelect.addEventListener("change", () => {
-			const ready = formatSelect.value && uploadedFile;
+			const ready = formatSelect.value && files.length > 0;
 			convertBtn.disabled = !ready;
 			convertBtn.classList.toggle("active", ready);
 		});
 
 		convertBtn.addEventListener("click", async () => {
+			console.log(files);
 			const formData = new FormData();
-			formData.append("filename", uploadedFile);
+			for (const file of files) {
+				formData.append("files", file);
+			}
 			formData.append("target_format", formatSelect.value);
 
 			const res = await fetch("/convert", {
@@ -78,10 +146,15 @@
 			});
 
 			const blob = await res.blob();
-			const a = document.createElement('a');
-			a.href = URL.createObjectURL(blob);
-			a.download = uploadedFile.split('.').slice(0, -1).join('.') + '.' + formatSelect.value;
-			a.click();
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			if (files.length > 1) {
+				link.download = `converted_files.zip`;
+			} else {
+				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_converted.${formatSelect.value}`;
+			}
+			link.click();
 		});
 
 		/**
@@ -110,7 +183,8 @@
 				body: formData
 			});
 			const data = await res.json();
-			uploadedFile = data.filename;
+			let uploadedFile = data.filename;
+			let formatValue = formatSelect.value;
 
 			// Update format select options
 			if (data.type && formatOptions[data.type]) {
@@ -119,6 +193,19 @@
 					if (!uploadedFile.endsWith(fmt))
 						formatSelect.innerHTML += `<option value="${fmt}">${fmt.toUpperCase()}</option>`;
 				});
+				// If it's a video, it can be converted to audio
+				if (data.type === "video") {
+					formatOptions.audio.forEach(fmt => {
+						formatSelect.innerHTML += `<option value="${fmt}">${fmt.toUpperCase()}</option>`;
+					});
+				}
+				// If there was a previous selection, keep it
+				if (formatValue && formatOptions[data.type].includes(formatValue)) {
+					formatSelect.value = formatValue;
+				} else {
+					formatSelect.value = "";
+				}
+				// Enable the format select
 				formatSelect.disabled = false;
 			} else {
 				formatSelect.innerHTML = `<option value="">Unsupported file</option>`;
@@ -132,7 +219,7 @@
 
 			// Display file preview and info
 			showPreview(file);
-			const preview = document.getElementById("preview");
+			const preview = document.getElementById("file-container").lastElementChild.querySelector("#preview");
 			const fileInfo = document.createElement("div");
 			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
 			fileInfo.style.marginTop = "10px";
@@ -146,7 +233,7 @@
 		 * @param {File} file - The file to be previewed.
 		 */
 		function showPreview(file) {
-			const preview = document.getElementById("preview");
+			const preview = document.getElementById("file-container").lastElementChild.querySelector("#preview");
 			preview.innerHTML = "";
 
 			const ext = file.name.split('.').pop().toLowerCase();
@@ -196,6 +283,20 @@
 			} else {
 				preview.textContent = "Preview not available for this file type.";
 			}
+		}
+
+		/**
+		 * @brief Clears all uploaded files and resets the UI.
+		 */
+		function clearAll() {
+			files = [];
+			currentType = null;
+			document.getElementById("file-container").innerHTML = "";
+			formatSelect.innerHTML = `<option value="">Select conversion format</option>`;
+			formatSelect.disabled = true;
+			convertBtn.disabled = true;
+			convertBtn.classList.remove("active");
+			dropZone.classList.remove("active");
 		}
 	</script>
 </body>
