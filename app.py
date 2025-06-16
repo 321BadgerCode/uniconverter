@@ -112,7 +112,7 @@ def convert_one(file):
 					for contour in contours:
 						points = [(int(x), int(y)) for [[x, y]] in contour]
 						if len(points) > 2:
-							dwg.add(dwg.polygon(points, fill='black', stroke='black'))
+							dwg.add(dwg.polygon(points, fill="black", stroke="black"))
 					dwg.save()
 				except ImportError as e:
 					print("Vectorizer error: vectorizer module not found")
@@ -253,4 +253,4 @@ if __name__ == "__main__":
 		signal.signal(signal.SIGTERM, lambda signum, frame: cleanup_files())
 		signal.signal(signal.SIGINT, lambda signum, frame: cleanup_files())
 
-	app.run(host='0.0.0.0', port=5000)
+	app.run(host="0.0.0.0", port=5000)

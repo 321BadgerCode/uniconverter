@@ -14,6 +14,7 @@
 		<button onclick="clearAll()">Clear all</button>
 		<div id="file-container"></div>
 		<input type="file" id="fileInput" accept="image/*,video/*,audio/*,.pdf,.txt" hidden/>
+		<input type="file" id="folderInput"  webkitdirectory directory multiple hidden>
 
 		<!-- Conversion area -->
 		<select id="formatSelect" disabled>
@@ -25,6 +26,8 @@
 	<script>
 		// Get elements
 		const dropZone = document.getElementById("drop-zone");
+		const fileInput = document.getElementById("fileInput");
+		const folderInput = document.getElementById("folderInput");
 		const formatSelect = document.getElementById("formatSelect");
 		const convertBtn = document.getElementById("convertBtn");
 		let files = [];
@@ -79,7 +82,14 @@
 		}
 
 		// Set up event listeners
-		dropZone.addEventListener("click", () => fileInput.click());
+		dropZone.addEventListener("dblclick", () => folderInput.click());
+		dropZone.addEventListener("click", () => {
+			setTimeout(() => {
+				if (!dropZone.classList.contains("active")) {
+					fileInput.click();
+				}
+			}, 200);
+		});
 
 		dropZone.addEventListener("dragover", e => {
 			e.preventDefault();
@@ -97,10 +107,12 @@
 
 			// Add drag and drop functionality
 			const file = e.dataTransfer.files[0];
-			if (!file) return;
+			if (!file || file.type === '' || formatOptions[file.type.split('/')[0]] === undefined) {
+				return;
+			}
 
 			// If the file is of a different type than the current type, show a warning
-			if (files.length > 0 && file.type.split('/')[0] !== currentType) {
+			if (files.length > 0 && currentType && file.type.split('/')[0] !== currentType) {
 				alert("You are uploading a different type of file. The conversion files must be of type \"" + currentType + "\".");
 				return;
 			}
@@ -114,9 +126,12 @@
 			// Get file
 			if (fileInput.files.length === 0) return;
 			const file = fileInput.files[0];
+			if (!file || file.type === '' || formatOptions[file.type.split('/')[0]] === undefined) {
+				return;
+			}
 
 			// If the file is of a different type than the current type, show a warning
-			if (files.length > 0 && file.type.split('/')[0] !== currentType) {
+			if (files.length > 0 && currentType && file.type.split('/')[0] !== currentType) {
 				alert("You are uploading a different type of file. The conversion files must be of type \"" + currentType + "\".");
 				return;
 			}
@@ -124,6 +139,21 @@
 			// Create file item and upload
 			createFileItem(file);
 			await uploadFile(file);
+		});
+
+		folderInput.addEventListener("change", async () => {
+			// Get files from folder input
+			const folderFiles = Array.from(folderInput.files);
+			if (folderFiles.length === 0) return;
+
+			// Create file items and upload each file
+			for (const file of folderFiles) {
+				if (currentType && file.type.split('/')[0] !== currentType) {
+					continue;
+				}
+				createFileItem(file);
+				await uploadFile(file);
+			}
 		});
 
 		formatSelect.addEventListener("change", () => {
