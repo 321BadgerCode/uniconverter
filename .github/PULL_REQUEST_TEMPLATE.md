@@ -1,8 +1,4 @@
----
-Name: "🚀 Pull Request"
-About: "Description."
----
-
 ## Checklist
 
-- [ ] TODO
+- [x] ABC
+- [ ] XYZ
