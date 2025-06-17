@@ -50,6 +50,53 @@ def upload():
 		return {"filename": filename, "type": file_type}
 	return {"error": "No file uploaded"}
 
+def image_to_colored_svg_kmeans(image_path, output_svg, num_colors=8, min_region_size=100):
+	import cv2
+	import numpy as np
+	import svgwrite
+	from collections import defaultdict
+
+	img = cv2.imread(image_path)
+	img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+	h, w, _ = img_rgb.shape
+
+	# Flatten image for K-means clustering
+	Z = img_rgb.reshape((-1, 3))
+	Z = np.float32(Z)
+
+	# Apply K-means to reduce colors
+	criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+	_, labels, centers = cv2.kmeans(Z, num_colors, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+
+	# Convert back to image with reduced colors
+	centers = np.uint8(centers)
+	reduced_img = centers[labels.flatten()].reshape(img_rgb.shape)
+
+	# Map each color to a mask
+	masks = defaultdict(lambda: np.zeros((h, w), dtype=np.uint8))
+	label_img = labels.reshape((h, w))
+
+	for i, color in enumerate(centers):
+		masks[i][label_img == i] = 255
+
+	# Create SVG
+	dwg = svgwrite.Drawing(output_svg, size=(w, h))
+
+	for i, mask in masks.items():
+		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+		color = centers[i]
+		fill = svgwrite.rgb(color[0], color[1], color[2])
+
+		for contour in contours:
+			if cv2.contourArea(contour) < min_region_size:
+				continue
+
+			points = [(int(p[0][0]), int(p[0][1])) for p in contour]
+			if len(points) >= 3:
+				dwg.add(dwg.polygon(points, fill=fill, stroke="black", stroke_width=0.2))
+
+	dwg.save()
+
 def convert_one(file):
 	"""
 	Convert a single file.
@@ -88,36 +135,11 @@ def convert_one(file):
 			# For SVG, we need to vectorize
 			elif target_format == "svg":
 				try:
-					import cv2
-					import svgwrite
-					import numpy as np
-
-					# Convert image to numpy array
-					img_array = np.array(img)
-
-					# Convert to grayscale
-					gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
-
-					# Threshold the image to get a binary image
-					_, binary = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY)
-
-					# Find contours
-					contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-					# Create SVG canvas
-					height, width = binary.shape
-					dwg = svgwrite.Drawing(output_path, size=(width, height))
-
-					# Draw contours
-					for contour in contours:
-						points = [(int(x), int(y)) for [[x, y]] in contour]
-						if len(points) > 2:
-							dwg.add(dwg.polygon(points, fill="black", stroke="black"))
-					dwg.save()
+					image_to_colored_svg_kmeans(input_path, output_path)
 				except ImportError as e:
-					print("Vectorizer error: vectorizer module not found")
+					print("Import errors: cv2, numpy, svgwrite, or collections.defaultdict module not found")
 					print("Error details:", e)
-					return jsonify({"error": "vectorizer is required for SVG conversion."}), 500
+					return jsonify({"error": "Required libraries for SVG conversion are not installed."}), 500
 			else:
 				img = img.convert("RGB")
 				img.save(output_path, target_format.upper())

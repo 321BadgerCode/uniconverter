@@ -2,35 +2,46 @@
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Uniconverter</title>
 	<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 	<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
 <body>
 	<div class="container">
-		<h1>Universal File Converter</h1>
+		<h1><span style="color: #b6472b;">Uni</span><span style="color: #a54799">c<span class="rotate-o">⚙️</span>nvert<span class="er"></span></span></h1>
+
+		<!-- Notification -->
+		<div id="notification" style="display:none;"></div>
 
 		<!-- Upload area -->
-		<div id="drop-zone" class="drop-zone">Drag & Drop File Here</div>
-		<button onclick="clearAll()">Clear all</button>
+		<div id="drop-zone" class="drop-zone">
+			<strong>Drag & Drop File Here</strong><br>
+			<small>(Click for files, double click for folders)</small>
+		</div>
+		<button id="clearAllBtn" onclick="clearAll()">Clear all</button>
 		<div id="file-container"></div>
 		<input type="file" id="fileInput" accept="image/*,video/*,audio/*,.pdf,.txt" hidden/>
-		<input type="file" id="folderInput"  webkitdirectory directory multiple hidden>
+		<input type="file" id="folderInput"	webkitdirectory directory multiple hidden>
 
 		<!-- Conversion area -->
-		<select id="formatSelect" disabled>
-			<option value="">Select conversion format</option>
-		</select>
-		<button id="convertBtn" disabled>Convert</button>
+		<div class="controls-area">
+			<select id="formatSelect" disabled>
+				<option value="">Select conversion format</option>
+			</select>
+			<button id="convertBtn" disabled>Convert</button>
+		</div>
 	</div>
 
 	<script>
 		// Get elements
+		const notification = document.getElementById("notification");
 		const dropZone = document.getElementById("drop-zone");
 		const fileInput = document.getElementById("fileInput");
 		const folderInput = document.getElementById("folderInput");
 		const formatSelect = document.getElementById("formatSelect");
 		const convertBtn = document.getElementById("convertBtn");
+
 		let files = [];
 		let currentType = null;
 
@@ -43,38 +54,97 @@
 		};
 
 		/**
+		 * @brief Displays a notification message.
+		 * @param {string} message - The message to be displayed.
+		 * @return {void}
+		 */
+		function showNotification(message) {
+			notification.textContent = message;
+			notification.style.display = "block";
+			setTimeout(() => {
+				notification.style.display = "none";
+			}, 4000); // Hide after 4 seconds
+		}
+
+		/**
+		 * @brief Adjusts formatSelect options based on the current files.
+		 * @return {void}
+		 */
+		function adjustFormatOptions() {
+			if (files.length === 0) {
+				formatSelect.innerHTML = `<option value="">Select conversion format</option>`;
+				return;
+			}
+
+			let fileTypes = files.map(file => file.type.split('/')[0]);
+			let uniqueTypes = [...new Set(fileTypes)];
+			// If video and audio are mixed, get rid of video
+			if (uniqueTypes.includes("video") && uniqueTypes.includes("audio")) {
+				uniqueTypes = uniqueTypes.filter(type => type !== "video");
+			}
+			// If only video, add audio
+			if (uniqueTypes.length === 1 && uniqueTypes[0] === "video") {
+				uniqueTypes.push("audio");
+			}
+
+			// Clear previous options
+			formatSelect.innerHTML = `<option value="">Select conversion format</option>`;
+
+			// Add options based on current files
+			for (const type of uniqueTypes) {
+				if (formatOptions[type]) {
+					for (const format of formatOptions[type]) {
+						// JPEG is already covered by JPG
+						if (format === "jpeg") continue;
+						// Skip if files has file extension of type
+						if (files.some(file => file.name.toLowerCase().endsWith(format))) continue;
+						const option = document.createElement("option");
+						option.value = format;
+						option.textContent = format.toUpperCase();
+						formatSelect.appendChild(option);
+					}
+				}
+			}
+
+			// Enable the format select if there are valid options
+			formatSelect.disabled = formatSelect.options.length <= 1;
+			convertBtn.disabled = !formatSelect.value;
+			convertBtn.classList.toggle("active", !convertBtn.disabled);
+		}
+
+		/**
 		 * @brief Creates file item.
 		 * @param {File} file - The file to be displayed.
+		 * @return {void}
 		 */
 		function createFileItem(file) {
 			// Add file to the list
 			files.push(file);
+			currentType = file.type.split('/')[0];
+
+			// Create a unique ID for the file element to manage it easily
+			const fileId = file.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.size;
 
 			// Create a new file input and preview area
 			const fileContainer = document.getElementById("file-container");
+			// Set up the new file div
 			const newFileDiv = document.createElement("div");
 			newFileDiv.className = "file-item";
-			newFileDiv.id = file.name.replace(/\s+/g, '_').toLowerCase();
-			newFileDiv.style.position = "relative";
-			newFileDiv.style.display = "inline-block";
+			newFileDiv.id = fileId;
 			fileContainer.appendChild(newFileDiv);
+			// Create preview
 			const previewDiv = document.createElement("div");
-			previewDiv.id = "preview";
-			previewDiv.style.marginTop = "20px";
+			previewDiv.className = "file-preview";
 			newFileDiv.appendChild(previewDiv);
+			// Create clear button
 			const clearBtn = document.createElement("button");
-			clearBtn.textContent = "X";
-			clearBtn.style.fontSize = "30px";
-			clearBtn.style.backgroundColor = "transparent";
-			clearBtn.style.color = "red";
-			clearBtn.style.border = "none";
-			clearBtn.style.position = "absolute";
-			clearBtn.style.paddingLeft = "0px";
-			clearBtn.style.top = "0";
+			clearBtn.className = "remove-btn";
+			clearBtn.textContent = "Remove";
 			clearBtn.addEventListener("click", () => {
 				files = files.filter(f => f.name !== file.name);
 				currentType = files.length > 0 ? files[0].type.split('/')[0] : null;
 				fileContainer.removeChild(newFileDiv);
+				adjustFormatOptions();
 			});
 			newFileDiv.appendChild(clearBtn);
 
@@ -82,14 +152,67 @@
 			currentType = file.type.split('/')[0];
 		}
 
+		/**
+		 * @brief Check if file types are compatible.
+		 * @param {string} type - The type of the file to check.
+		 * @param {string} type2 - The type to compare against.
+		 * @return {boolean} True if the type is compatible, false otherwise.
+		 */
+		function isCompatibleType(type, type2) {
+			if (type === "video" && type2 === "audio"
+				|| type === "audio" && type2 === "video") return true;
+			return type === type2;
+		}
+
+		/**
+		 * @brief Processes a list of files from any input source.
+		 * @param {FileList} incomingFiles - The list of files to process.
+		 * @return {void}
+		 */
+		function handleFiles(incomingFiles) {
+			// Check if there are any files to process
+			if (incomingFiles.length === 0) return;
+
+			// Upload each file
+			for (const file of incomingFiles) {
+				const fileMainType = file.type.split('/')[0];
+
+				// Check for valid file type
+				if (!file.type || !formatOptions[fileMainType]) {
+					showNotification(`File type for "${file.name}" is not supported.`);
+					continue;
+				}
+
+				// Ensure all files are of the same type (e.g., all images)
+				if (files.length > 0 && currentType && !isCompatibleType(currentType, fileMainType)) {
+					showNotification(`You can only upload files of the same type. Please clear existing files to switch types.`);
+					continue;
+				}
+
+				// Make sure it's not a duplicate file
+				if (files.some(f => f.name === file.name)) {
+					showNotification(`File "${file.name}" is already uploaded.`);
+					continue;
+				}
+
+				createFileItem(file);
+				uploadFile(file);
+			}
+
+			// Adjust format options based on the current files
+			adjustFormatOptions();
+
+			// Reset input values to allow re-uploading the same file
+			fileInput.value = '';
+			folderInput.value = '';
+		}
+
 		// Set up event listeners
 		dropZone.addEventListener("dblclick", () => folderInput.click());
-		dropZone.addEventListener("click", () => {
-			setTimeout(() => {
-				if (!dropZone.classList.contains("active")) {
-					fileInput.click();
-				}
-			}, 200);
+		dropZone.addEventListener("click", (e) => {
+			if (e.detail === 1) {
+				setTimeout(() => fileInput.click(), 200);
+			}
 		});
 
 		dropZone.addEventListener("dragover", e => {
@@ -101,61 +224,73 @@
 			dropZone.classList.remove("active");
 		});
 
-		dropZone.addEventListener("drop", async e => {
-			// Prevent default behavior and remove active class
-			e.preventDefault();
-			dropZone.classList.remove("active");
-
-			// Add drag and drop functionality
-			const file = e.dataTransfer.files[0];
-			if (!file || file.type === '' || formatOptions[file.type.split('/')[0]] === undefined) {
-				return;
-			}
-
-			// If the file is of a different type than the current type, show a warning
-			if (files.length > 0 && currentType && file.type.split('/')[0] !== currentType) {
-				alert("You are uploading a different type of file. The conversion files must be of type \"" + currentType + "\".");
-				return;
-			}
-
-			// Create file item and upload
-			createFileItem(file);
-			await uploadFile(file);
-		});
-
-		fileInput.addEventListener("change", async () => {
-			// Get file
-			if (fileInput.files.length === 0) return;
-			const file = fileInput.files[0];
-			if (!file || file.type === '' || formatOptions[file.type.split('/')[0]] === undefined) {
-				return;
-			}
-
-			// If the file is of a different type than the current type, show a warning
-			if (files.length > 0 && currentType && file.type.split('/')[0] !== currentType) {
-				alert("You are uploading a different type of file. The conversion files must be of type \"" + currentType + "\".");
-				return;
-			}
-
-			// Create file item and upload
-			createFileItem(file);
-			await uploadFile(file);
-		});
-
-		folderInput.addEventListener("change", async () => {
-			// Get files from folder input
-			const folderFiles = Array.from(folderInput.files);
-			if (folderFiles.length === 0) return;
-
-			// Create file items and upload each file
-			for (const file of folderFiles) {
-				if (currentType && file.type.split('/')[0] !== currentType) {
-					continue;
+		/**
+		 * @brief Recursively traverses a file tree structure.
+		 * @param {FileSystemEntry} item - The current file or directory item.
+		 * @param {string} path - The current path in the file tree.
+		 * @return {Array} An array of files found in the tree.
+		 */
+		async function traverseFileTree(item, path = "") {
+			let filesArray = [];
+			if (item.isFile) {
+				// If it's a file, get its path
+				const file = await new Promise(resolve => item.file(resolve));
+				filesArray.push(file);
+			} else if (item.isDirectory) {
+				// If it's a directory, traverse its contents
+				const dirReader = item.createReader();
+				const entries = await new Promise(resolve => dirReader.readEntries(resolve));
+				for (const entry of entries) {
+					const subFiles = await traverseFileTree(entry, path + item.name + "/");
+					filesArray.push(...subFiles);
 				}
-				createFileItem(file);
-				await uploadFile(file);
 			}
-		});
+			return filesArray;
+		}
+
+		/**
+		 * @brief Get filetype based on extension.
+		 * @param {string} ext - The file extension.
+		 * @return {string} The file type.
+		 */
+		function getFileType(ext) {
+			if (formatOptions.image.includes(ext)) return "image";
+			if (formatOptions.video.includes(ext)) return "video";
+			if (formatOptions.audio.includes(ext)) return "audio";
+			if (formatOptions.document.includes(ext)) return "document";
+			return null; // Unsupported type
+		}
+
+		dropZone.addEventListener("drop", function(event) {
+			event.preventDefault();
+
+			var items = event.dataTransfer.items;
+			let allPaths = [];
+
+			if (items && items.length > 0) {
+				for (let i = 0; i < items.length; i++) {
+					// If file, handle it directly
+					if (items[i].type !== '') {
+						handleFiles([items[i].getAsFile()]);
+						continue;
+					}
+					// If directory, traverse it
+					const item = items[i].webkitGetAsEntry();
+					if (item) {
+						traverseFileTree(item).then(paths => {
+							allPaths.push(...paths);
+							handleFiles(allPaths);
+						});
+					}
+				}
+			} else {
+				// If no items, just handle files directly
+				handleFiles(event.dataTransfer.files);
+			}
+		}, false);
+
+		fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+		folderInput.addEventListener("change", () => handleFiles(folderInput.files));
 
 		formatSelect.addEventListener("change", () => {
 			const ready = formatSelect.value && files.length > 0;
@@ -194,16 +329,15 @@
 		 * @return {string} A formatted string representing the file size.
 		 */
 		function formatFileSize(size) {
-			if (size < 1024) return `${size} B`;
-			else if (size < 1048576) return `${(size / 1024).toFixed(2)} KB`;
-			else if (size < 1073741824) return `${(size / 1048576).toFixed(2)} MB`;
-			else if (size < 1099511627776) return `${(size / 1073741824).toFixed(2)} GB`;
-			else return `${(size / 1099511627776).toFixed(2)} TB`;
+			if (size === 0) return '0 B';
+			const i = Math.floor(Math.log(size) / Math.log(1024));
+			return `${parseFloat((size / Math.pow(1024, i)).toFixed(2))} ${['B', 'KB', 'MB', 'GB', 'TB'][i]}`;
 		}
 
 		/**
 		 * @brief Uploads the selected file to the server and updates the UI.
 		 * @param {File} file - The file to be uploaded.
+		 * @return {Promise<void>} A promise that resolves when the upload is complete.
 		 */
 		async function uploadFile(file) {
 			// Get form data
@@ -214,34 +348,7 @@
 				body: formData
 			});
 			const data = await res.json();
-			let uploadedFile = data.filename;
 			let formatValue = formatSelect.value;
-
-			// Update format select options
-			if (data.type && formatOptions[data.type]) {
-				formatSelect.innerHTML = `<option value="">Select format</option>`;
-				formatOptions[data.type].forEach(fmt => {
-					if (!uploadedFile.endsWith(fmt))
-						formatSelect.innerHTML += `<option value="${fmt}">${fmt.toUpperCase()}</option>`;
-				});
-				// If it's a video, it can be converted to audio
-				if (data.type === "video") {
-					formatOptions.audio.forEach(fmt => {
-						formatSelect.innerHTML += `<option value="${fmt}">${fmt.toUpperCase()}</option>`;
-					});
-				}
-				// If there was a previous selection, keep it
-				if (formatValue && formatOptions[data.type].includes(formatValue)) {
-					formatSelect.value = formatValue;
-				} else {
-					formatSelect.value = "";
-				}
-				// Enable the format select
-				formatSelect.disabled = false;
-			} else {
-				formatSelect.innerHTML = `<option value="">Unsupported file</option>`;
-				formatSelect.disabled = true;
-			}
 
 			// Update convert button state
 			if (data.type && formatOptions[data.type]) {
@@ -249,30 +356,48 @@
 			}
 
 			// Display file preview and info
-			showPreview(file);
-			const preview = document.getElementById("file-container").lastElementChild.querySelector("#preview");
+			const fileId = file.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.size;
+			const preview = document.getElementById(fileId).querySelector(".file-preview");
+			showPreview(file, preview);
 			const fileInfo = document.createElement("div");
+			fileInfo.className = "file-info";
 			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
-			fileInfo.style.marginTop = "10px";
-			fileInfo.style.fontSize = "14px";
-			fileInfo.style.color = "#555";
 			preview.appendChild(fileInfo);
 		}
 
 		/**
 		 * @brief Displays a preview of the uploaded file based on its type.
 		 * @param {File} file - The file to be previewed.
+		 * @param {HTMLElement} preview - The element where the preview will be displayed.
+		 * @return {void}
 		 */
-		function showPreview(file) {
-			const preview = document.getElementById("file-container").lastElementChild.querySelector("#preview");
+		function showPreview(file, preview) {
 			preview.innerHTML = "";
-
 			const ext = file.name.split('.').pop().toLowerCase();
+
+			// Create file type badge
+			const badge = document.createElement("span");
+			badge.className = "file-type-badge";
+			badge.textContent = ext;
+			// Change background color depending on file type
+			if (formatOptions.image.includes(ext)) {
+				badge.style.backgroundColor = "#4caf50"; // Green for images
+			} else if (formatOptions.video.includes(ext)) {
+				badge.style.backgroundColor = "#2196f3"; // Blue for videos
+			} else if (formatOptions.audio.includes(ext)) {
+				badge.style.backgroundColor = "#ff9800"; // Orange for audio
+			} else if (formatOptions.document.includes(ext)) {
+				badge.style.backgroundColor = "#9c27b0"; // Purple for documents
+			} else {
+				badge.style.backgroundColor = "#f44336"; // Red for unsupported types
+			}
+			preview.appendChild(badge);
 
 			// Check file type and create appropriate preview
 			if (formatOptions.image.includes(ext)) {
 				const img = document.createElement("img");
 				img.src = URL.createObjectURL(file);
+				img.onload = () => URL.revokeObjectURL(img.src);
 				img.style.maxWidth = "100%";
 				img.style.borderRadius = "8px";
 				preview.appendChild(img);
@@ -312,19 +437,20 @@
 				pdfFrame.style.height = "500px";
 				preview.appendChild(pdfFrame);
 			} else {
+				badge.style.display = "none";
 				preview.textContent = "Preview not available for this file type.";
 			}
 		}
 
 		/**
 		 * @brief Clears all uploaded files and resets the UI.
+		 * @return {void}
 		 */
 		function clearAll() {
 			files = [];
 			currentType = null;
 			document.getElementById("file-container").innerHTML = "";
-			formatSelect.innerHTML = `<option value="">Select conversion format</option>`;
-			formatSelect.disabled = true;
+			adjustFormatOptions();
 			convertBtn.disabled = true;
 			convertBtn.classList.remove("active");
 			dropZone.classList.remove("active");

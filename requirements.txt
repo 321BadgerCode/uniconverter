@@ -3,6 +3,7 @@ pillow
 opencv-python
 svgwrite
 numpy
+collections
 pdfminer.six
 fpdf
 gunicorn
