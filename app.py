@@ -43,14 +43,20 @@ def upload():
 	if file:
 		filename = secure_filename(file.filename)
 		ext = os.path.splitext(filename)[1].lower()[1::] # Get the file extension without the dot
-		path = os.path.join(UPLOAD_FOLDER, filename)
-		file.save(path)
 
 		file_type = detect_type(ext)
 		return {"filename": filename, "type": file_type}
 	return {"error": "No file uploaded"}
 
 def image_to_colored_svg_kmeans(image_path, output_svg, num_colors=8, min_region_size=100):
+	"""
+	Convert an image to a colored SVG using K-means clustering.
+	Args:
+		image_path (str): Path to the input image.
+		output_svg (str): Path to save the output SVG file.
+		num_colors (int): Number of colors to reduce the image to.
+		min_region_size (int): Minimum size of regions to include in the SVG.
+	"""
 	import cv2
 	import numpy as np
 	import svgwrite
@@ -100,6 +106,8 @@ def image_to_colored_svg_kmeans(image_path, output_svg, num_colors=8, min_region
 def convert_one(file):
 	"""
 	Convert a single file.
+	Args:
+		file (dict): A dictionary containing the filename and target format.
 	"""
 	filename = file["filename"]
 	ext = os.path.splitext(filename)[1].lower()[1::] # Get the file extension without the dot
@@ -236,6 +244,8 @@ def convert():
 def detect_type(ext):
 	"""
 	Detect the type of file based on its extension.
+	Args:
+		ext (str): The file extension.
 	"""
 	if ext in image_exts:
 		return "image"
