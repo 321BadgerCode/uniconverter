@@ -1,0 +1,28 @@
+name: 🔧 Chore Request
+description: Suggest a cleanup or update for the project.
+title: "[Chore]: Update "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thanks for suggesting a chores!
+        Please describe your idea clearly to help us evaluate and implement it effectively.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Chore Summary
+      description: Short description of the chore you're requesting.
+      placeholder: "Update the UI."
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Why is this chore needed?
+      description: Describe the necessity to update. Why do you need this update?
+      placeholder: "The UI is old and outdated."
+    validations:
+      required: false
