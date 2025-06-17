@@ -43,6 +43,8 @@ def upload():
 	if file:
 		filename = secure_filename(file.filename)
 		ext = os.path.splitext(filename)[1].lower()[1::] # Get the file extension without the dot
+		path = os.path.join(UPLOAD_FOLDER, filename)
+		file.save(path)
 
 		file_type = detect_type(ext)
 		return {"filename": filename, "type": file_type}
