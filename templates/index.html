@@ -96,8 +96,8 @@
 					for (const format of formatOptions[type]) {
 						// JPEG is already covered by JPG
 						if (format === "jpeg") continue;
-						// Skip if files has file extension of type
-						if (files.some(file => file.name.toLowerCase().endsWith(format))) continue;
+						// Skip if files has file extension of type and all files are of that type
+						if (files.every(file => file.name.toLowerCase().endsWith(format))) continue;
 						const option = document.createElement("option");
 						option.value = format;
 						option.textContent = format.toUpperCase();
@@ -208,10 +208,24 @@
 		}
 
 		// Set up event listeners
-		dropZone.addEventListener("dblclick", () => folderInput.click());
-		dropZone.addEventListener("click", (e) => {
-			if (e.detail === 1) {
-				setTimeout(() => fileInput.click(), 200);
+		let lastClickTime = 0;
+
+		dropZone.addEventListener("mousedown", (e) => {
+			const now = new Date().getTime();
+			const timeSince = now - lastClickTime;
+
+			lastClickTime = now;
+
+			if (timeSince < 200) {
+				// Detected double-click
+				folderInput.click();
+			} else {
+				setTimeout(() => {
+					// If a second click doesn't come soon, treat as single
+					if (new Date().getTime() - lastClickTime >= 200) {
+						fileInput.click();
+					}
+				}, 200);
 			}
 		});
 

@@ -41,13 +41,13 @@ body {
 	display: inline-block;
 	position: relative;
 	width: 0.1em;
-	animation: moveText 10s ease-in-out infinite;
+	animation: moveText 10s ease-in-out;
 }
 
 .er::after {
 	content: "er";
 	left: 0;
-	animation: extensionCycle 10s steps(1, end) infinite;
+	animation: extensionCycle 10s steps(1, end);
 }
 
 @keyframes moveText {
