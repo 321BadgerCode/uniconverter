@@ -1,6 +1,6 @@
 name: 🔧 Chore Request
 description: Suggest a cleanup or update for the project.
-title: "[Chore]: Update "
+title: "[Chore]: Update"
 labels: [enhancement]
 body:
   - type: markdown

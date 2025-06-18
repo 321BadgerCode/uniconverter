@@ -4,6 +4,7 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Uniconverter</title>
+	<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
 	<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 	<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
 </head>
@@ -34,6 +35,11 @@
 	</div>
 
 	<script>
+		// Register service worker for offline and web app support
+		if ("serviceWorker" in navigator) {
+			navigator.serviceWorker.register("/static/service-worker.js");
+		}
+
 		// Get elements
 		const notification = document.getElementById("notification");
 		const dropZone = document.getElementById("drop-zone");
