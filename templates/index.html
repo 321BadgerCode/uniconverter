@@ -82,7 +82,10 @@
 				return;
 			}
 
-			let fileTypes = files.map(file => file.type.split('/')[0]);
+			let fileTypes = files.map(file => {
+				const ext = file.name.split('.').pop().toLowerCase();
+				return getFileType(ext) || "unknown";
+			});
 			let uniqueTypes = [...new Set(fileTypes)];
 			// If video and audio are mixed, get rid of video
 			if (uniqueTypes.includes("video") && uniqueTypes.includes("audio")) {
@@ -126,7 +129,7 @@
 		function createFileItem(file) {
 			// Add file to the list
 			files.push(file);
-			currentType = file.type.split('/')[0];
+			currentType = getFileType(file.name.split('.').pop().toLowerCase());
 
 			// Create a unique ID for the file element to manage it easily
 			const fileId = file.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.size;
@@ -148,14 +151,14 @@
 			clearBtn.textContent = "Remove";
 			clearBtn.addEventListener("click", () => {
 				files = files.filter(f => f.name !== file.name);
-				currentType = files.length > 0 ? files[0].type.split('/')[0] : null;
+				currentType = files.length > 0 ? getFileType(files[0].name.split('.').pop().toLowerCase()) : null;
 				fileContainer.removeChild(newFileDiv);
 				adjustFormatOptions();
 			});
 			newFileDiv.appendChild(clearBtn);
 
 			// Set current type based on file type
-			currentType = file.type.split('/')[0];
+			currentType = getFileType(file.name.split('.').pop().toLowerCase());
 		}
 
 		/**
@@ -181,7 +184,7 @@
 
 			// Upload each file
 			for (const file of incomingFiles) {
-				const fileMainType = file.type.split('/')[0];
+				const fileMainType = getFileType(file.name.split('.').pop().toLowerCase());
 
 				// Check for valid file type
 				if (!file.type || !formatOptions[fileMainType]) {
@@ -287,6 +290,8 @@
 			var items = event.dataTransfer.items;
 			let allPaths = [];
 
+			console.log("Files dropped:", event.dataTransfer.files);
+
 			if (items && items.length > 0) {
 				for (let i = 0; i < items.length; i++) {
 					// If file, handle it directly
@@ -378,11 +383,29 @@
 			// Display file preview and info
 			const fileId = file.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.size;
 			const preview = document.getElementById(fileId).querySelector(".file-preview");
-			showPreview(file, preview);
+			await showPreview(file, preview);
 			const fileInfo = document.createElement("div");
 			fileInfo.className = "file-info";
 			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
 			preview.appendChild(fileInfo);
+		}
+
+		/**
+		 * @brief Reads text file.
+		 * @param {File} file - The text file to be read.
+		 * @return {Promise<string>} A promise that resolves with the file content.
+		 */
+		 function readFileAsText(file) {
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = function(e) {
+					resolve(e.target.result);
+				};
+				reader.onerror = function(e) {
+					reject(e);
+				};
+				reader.readAsText(file);
+			});
 		}
 
 		/**
@@ -391,7 +414,7 @@
 		 * @param {HTMLElement} preview - The element where the preview will be displayed.
 		 * @return {void}
 		 */
-		function showPreview(file, preview) {
+		async function showPreview(file, preview) {
 			preview.innerHTML = "";
 			const ext = file.name.split('.').pop().toLowerCase();
 
@@ -419,6 +442,7 @@
 				img.src = URL.createObjectURL(file);
 				img.onload = () => URL.revokeObjectURL(img.src);
 				img.style.maxWidth = "100%";
+				img.style.maxHeight = "300px";
 				img.style.borderRadius = "8px";
 				preview.appendChild(img);
 			} else if (formatOptions.video.includes(ext)) {
@@ -426,6 +450,7 @@
 				video.src = URL.createObjectURL(file);
 				video.controls = true;
 				video.style.maxWidth = "100%";
+				video.style.maxHeight = "300px";
 				preview.appendChild(video);
 			} else if (formatOptions.audio.includes(ext)) {
 				const audio = document.createElement("audio");
@@ -433,23 +458,29 @@
 				audio.controls = true;
 				preview.appendChild(audio);
 			} else if (["txt"].includes(ext)) {
-				const reader = new FileReader();
-				reader.onload = function(e) {
-					const text = e.target.result;
-					let lines = text.split('\n').map(line => {
-						return line.length > 50 ? line.substring(0, 50) + "..." : line;
-					});
-					if (lines.length > 30) {
-						lines = lines.slice(0, 30);
-						lines.push("...");
-					}
-					const pre = document.createElement("pre");
-					pre.textContent = lines.join('\n');
-					pre.style.whiteSpace = "pre-wrap";
-					pre.style.wordBreak = "break-word";
-					preview.appendChild(pre);
-				};
-				reader.readAsText(file);
+				const textContent = await readFileAsText(file);
+
+				// Scrollable viewer for text content
+				const viewer = document.createElement("div");
+				viewer.style.border = "1px solid #ddd";
+				viewer.style.borderRadius = "6px";
+				viewer.style.backgroundColor = "#1e1e1e";
+				viewer.style.color = "#f5f5f5";
+				viewer.style.fontFamily = "Consolas, monospace";
+				viewer.style.fontSize = "14px";
+				viewer.style.padding = "12px";
+				viewer.style.margin = "16px 0";
+				viewer.style.maxWidth = "100%";
+				viewer.style.maxHeight = "400px";
+				viewer.style.overflowY = "auto";
+				viewer.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+				viewer.style.lineHeight = "1.5";
+				viewer.style.whiteSpace = "pre-wrap";
+				viewer.style.wordBreak = "break-word";
+				viewer.style.setProperty("scrollbar-color", "#888 #1e1e1e");
+				viewer.textContent = textContent;
+
+				preview.appendChild(viewer);
 			} else if (["pdf"].includes(ext)) {
 				const pdfFrame = document.createElement("iframe");
 				pdfFrame.src = URL.createObjectURL(file);
