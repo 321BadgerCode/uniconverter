@@ -1,9 +1,16 @@
+# Web UI
 flask
+
+# Docker
+gunicorn
+
+# Image processing
 pillow
 opencv-python
 svgwrite
 numpy
 collections
+
+# Document processing
 pdfminer.six
 fpdf
-gunicorn
