@@ -9,7 +9,6 @@ pillow
 opencv-python
 svgwrite
 numpy
-collections
 
 # Document processing
 pdfminer.six
