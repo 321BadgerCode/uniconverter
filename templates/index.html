@@ -53,10 +53,13 @@
 
 		// Define supported formats
 		const formatOptions = {
-			image: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg"],
-			audio: ["mp3", "wav", "flac", "aac", "m4a", "ogg"],
-			video: ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv"],
-			document: ["pdf", "txt"]
+			image: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "tga", "tif", "tiff", "ppm", "xbm", "icns"],
+			audio: ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "alac", "amr", "mka"],
+			video: ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv", "mpeg", "mpg", "3gp", "m4v", "ts"],
+			document: ["pdf", "txt"],
+			spreadsheet: ["xls", "xlsx", "csv", "ods", "tsv"],
+			presentation: ["ppt", "pptx", "odp", "keynote"],
+			archive: ["zip", "rar", "tar", "gz", "7z", "bz2", "xz"]
 		};
 
 		/**
@@ -105,6 +108,8 @@
 					for (const format of formatOptions[type]) {
 						// JPEG is already covered by JPG
 						if (format === "jpeg") continue;
+						// TIFF is already covered by TIF
+						if (format === "tiff") continue;
 						// Skip if files has file extension of type and all files are of that type
 						if (files.every(file => file.name.toLowerCase().endsWith(format))) continue;
 						const option = document.createElement("option");
@@ -417,19 +422,20 @@
 		async function showPreview(file, preview) {
 			preview.innerHTML = "";
 			const ext = file.name.split('.').pop().toLowerCase();
+			const fileType = getFileType(ext);
 
 			// Create file type badge
 			const badge = document.createElement("span");
 			badge.className = "file-type-badge";
 			badge.textContent = ext;
 			// Change background color depending on file type
-			if (formatOptions.image.includes(ext)) {
+			if (fileType === "image") {
 				badge.style.backgroundColor = "#4caf50"; // Green for images
-			} else if (formatOptions.video.includes(ext)) {
+			} else if (fileType === "video") {
 				badge.style.backgroundColor = "#2196f3"; // Blue for videos
-			} else if (formatOptions.audio.includes(ext)) {
+			} else if (fileType === "audio") {
 				badge.style.backgroundColor = "#ff9800"; // Orange for audio
-			} else if (formatOptions.document.includes(ext)) {
+			} else if (fileType === "document") {
 				badge.style.backgroundColor = "#9c27b0"; // Purple for documents
 			} else {
 				badge.style.backgroundColor = "#f44336"; // Red for unsupported types
@@ -437,7 +443,7 @@
 			preview.appendChild(badge);
 
 			// Check file type and create appropriate preview
-			if (formatOptions.image.includes(ext)) {
+			if (fileType === "image") {
 				const img = document.createElement("img");
 				img.src = URL.createObjectURL(file);
 				img.onload = () => URL.revokeObjectURL(img.src);
@@ -445,14 +451,14 @@
 				img.style.maxHeight = "300px";
 				img.style.borderRadius = "8px";
 				preview.appendChild(img);
-			} else if (formatOptions.video.includes(ext)) {
+			} else if (fileType === "video") {
 				const video = document.createElement("video");
 				video.src = URL.createObjectURL(file);
 				video.controls = true;
 				video.style.maxWidth = "100%";
 				video.style.maxHeight = "300px";
 				preview.appendChild(video);
-			} else if (formatOptions.audio.includes(ext)) {
+			} else if (fileType === "audio") {
 				const audio = document.createElement("audio");
 				audio.src = URL.createObjectURL(file);
 				audio.controls = true;

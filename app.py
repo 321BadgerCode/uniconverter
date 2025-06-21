@@ -11,9 +11,9 @@ UPLOAD_FOLDER = "uploads"
 CONVERTED_FOLDER = "converted"
 
 # Declare supported file extensions
-image_exts = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg"]
-audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg"]
-video_exts = ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv"]
+image_exts = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "tga", "tif", "tiff", "ppm", "xbm", "icns"]
+audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "alac", "amr", "mka"]
+video_exts = ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv", "mpeg", "mpg", "3gp", "m4v", "ts"]
 doc_exts = ["pdf", "txt"]
 
 # Declare command line argument variable
@@ -122,16 +122,40 @@ def convert_one(file):
 	if ext in image_exts and target_format in image_exts:
 		try:
 			from PIL import Image
-			img = Image.open(input_path)
-			# Pillow only knows jpeg, not jpg
-			if target_format in ["jpg", "jpeg"]:
-				img = img.convert("RGB")
-				target_format = "jpeg"
-				img.save(output_path, target_format.upper())
-			# For ico files, save image with correct size
-			elif target_format == "ico":
-				img = img.convert("RGBA")
 
+			# For SVG, we need to vectorize the image
+			if target_format == "svg":
+				try:
+					image_to_colored_svg_kmeans(input_path, output_path)
+				except ImportError as e:
+					print("Import errors: cv2, numpy, or svgwrite module not found")
+					print("Error details:", e)
+					return jsonify({"error": "Required libraries for SVG conversion are not installed."}), 500
+
+			img = Image.open(input_path)
+
+			# Pillow only knows jpeg, not jpg
+			if target_format == "jpg":
+				target_format = "jpeg"
+			# Pillow only knows tiff, not tif
+			elif target_format == "tif":
+				target_format = "tiff"
+
+			# If target format takes RGB, convert to RGB
+			if target_format in ["jpeg", "eps", "ppm"] and img.mode != "RGB":
+				img = img.convert("RGB")
+			# If target format takes RGBA, convert to RGBA
+			elif target_format in ["png", "webp", "bmp", "ico", "tga", "tiff", "icns"] and img.mode != "RGBA":
+				img = img.convert("RGBA")
+			# If target format takes P, convert to P
+			elif target_format in ["gif"] and img.mode != "P":
+				img = img.convert("P")
+			# If target format takes 1, convert to 1
+			elif target_format in ["xbm"] and img.mode != "1":
+				img = img.convert("1")
+
+			# For ico files, save image with correct size
+			if target_format == "ico":
 				# Ensure the image is square
 				if img.size[0] != img.size[1]:
 					min_size = min(img.size)
@@ -141,17 +165,9 @@ def convert_one(file):
 				while size < img.size[0]:
 					size *= 2
 				img = img.resize((size, size), Image.Resampling.LANCZOS)
-				img.save(output_path, target_format.upper())
-			# For SVG, we need to vectorize
-			elif target_format == "svg":
-				try:
-					image_to_colored_svg_kmeans(input_path, output_path)
-				except ImportError as e:
-					print("Import errors: cv2, numpy, svgwrite, or collections.defaultdict module not found")
-					print("Error details:", e)
-					return jsonify({"error": "Required libraries for SVG conversion are not installed."}), 500
-			else:
-				img = img.convert("RGB")
+
+			# Save the image in the target format
+			if not target_format in ["svg", "heic"]:
 				img.save(output_path, target_format.upper())
 		except ImportError as e:
 			print("Pillow error: PIL module not found")
