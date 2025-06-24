@@ -17,6 +17,9 @@ Welcome to **Uniconverter**! This program allows you to convert files of one typ
 - **Dark Theme**: The program features a sleek dark theme that is easy on the eyes and provides a modern look.
 - **Drag and Drop**: Users can easily drag and drop files into the program for conversion, making the process quick and intuitive.
 - **File Preview**: The program allows users to preview the files they want to convert, ensuring they select the correct files before conversion.
+- **Folder Support**: Users can upload entire folders of files, making it convenient for batch conversions.
+- **Many Filetypes**: The program supports various file types, including images, videos, audio files, and more, making it a versatile tool for all your conversion needs.
+- **Multimodality Compatibility**: The program can convert files to different formats, such as video to audio.
 
 ## 🛠️ Installation
 
