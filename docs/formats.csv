@@ -1,0 +1,5 @@
+Type,Extensions
+Image,jpg;jpeg;png;webp;gif;bmp;ico;svg;eps;tga;tif;tiff;ppm;xbm;icns
+Audio,mp3;wav;flac;aac;m4a;ogg;opus;wma;aiff;alac;amr;mka
+Video,mp4;mov;avi;webm;mkv;flv;wmv;mpeg;mpg;3gp;m4v;ts
+Document,pdf;txt

@@ -1,0 +1,147 @@
+% Set document class
+\documentclass{article}
+
+% Load libraries
+\usepackage[utf8]{inputenc}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{pgfplotstable}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{booktabs}
+\usepackage{colortbl}
+\usepackage{minted}
+\usepackage{titling}
+\usepackage{float}
+\usepackage[a4paper,margin=1in]{geometry}
+
+% Setup libraries
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{positioning}
+
+% Define custom colors
+\definecolor{accent}{HTML}{3F88C5}
+\definecolor{lightgray}{gray}{0.95}
+\definecolor{darkBlue}{RGB}{0, 0, 155}
+
+% Introduction
+\title{}
+\pretitle{
+	\begin{center}
+		\includegraphics[width=0.7\textwidth]{../asset/banner.png}\par\medskip
+}
+\posttitle{
+	\par
+	{\large\color{accent}Technology, Flow, and Format Support}
+	\par\end{center}
+}
+\author{Badger Code}
+\date{\today}
+\setlength{\droptitle}{-2em}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[colback=accent!10!white,colframe=accent,title=\textcolor{darkBlue}{Uni}versal File \textcolor{darkBlue}{Converter}, center title]
+\textbf{Universal File Converter} is a web application designed to convert various file formats seamlessly. It supports a wide range of input and output formats, making it versatile for different user needs. The application features a user-friendly interface built with HTML and JavaScript, backed by a Flask server that handles file uploads, format detection, and conversion processes.
+\end{tcolorbox}
+
+\section*{Technology Stack Flowchart}
+\begin{center}
+\begin{tikzpicture}[
+	node distance=1.7cm and 2.5cm,
+	every node/.style={font=\sffamily, align=center},
+	block/.style={rectangle, draw=accent, thick, fill=lightgray, rounded corners, minimum height=1cm, text width=3.5cm},
+	arrow/.style={->, thick, >=stealth}
+]
+\node[block] (ui) {Frontend UI\\ HTML + JS};
+\node[block, below=of ui] (flask) {Flask Backend};
+\node[block, below=of flask] (convert) {Conversion Module\\ (e.g. PIL, ffmpeg)};
+\node[block, below=of convert] (output) {Download Converted File};
+
+\draw[arrow] (ui) -- (flask);
+\draw[arrow] (flask) -- (convert);
+\draw[arrow] (convert) -- (output);
+\end{tikzpicture}
+\end{center}
+
+\section*{Application Flow Diagram}
+\begin{center}
+\begin{tikzpicture}[
+	node distance=2cm,
+	every node/.style={font=\sffamily, align=center},
+	block/.style={draw=black, thick, fill=blue!10, rectangle, minimum height=1cm, minimum width=3cm},
+	arrow/.style={->, thick, >=stealth}
+]
+\node[block] (upload) {1. Upload File};
+\node[block, right=of upload] (detect) {2. Detect Format};
+\node[block, right=of detect] (convert) {3. Convert File};
+\node[block, right=of convert] (download) {4. Download};
+
+\draw[arrow] (upload) -- (detect);
+\draw[arrow] (detect) -- (convert);
+\draw[arrow] (convert) -- (download);
+\end{tikzpicture}
+\end{center}
+
+\section*{Supported Formats}
+\pgfplotstableread[col sep=comma]{formats.csv}\formattable
+
+\begin{table}[H]
+\centering
+\pgfplotstabletypeset[
+	string type,
+	columns/Type/.style={column name=File Type},
+	columns/Extensions/.style={
+		column name=Extensions,
+		string type,
+		column type=p{6cm}
+	},
+	every head row/.style={before row=\toprule, after row=\midrule},
+	every last row/.style={after row=\bottomrule},
+	every even row/.style={before row={\rowcolor{lightgray}}}
+]{\formattable}
+\caption{Supported File Types and Extensions}
+\end{table}
+
+\section*{Code Walkthrough}
+
+\subsection{Conversion Logic}
+
+\begin{minted}[frame=lines]{python}
+@app.route("/convert", methods=["POST"])
+def convert():
+	"""
+	Convert uploaded files to the target format.
+	"""
+	files = request.files.getlist("files")
+	target_format = request.form.get("target_format")
+	if not files or not target_format:
+		return jsonify({"error": "No files or target format specified"}), 400
+
+	# Convert each file
+	converted_files = []
+	for file in files:
+		if file:
+			filename = secure_filename(file.filename)
+			path = os.path.join(UPLOAD_FOLDER, filename)
+			file.save(path)
+			file_info = {"filename": filename, "target_format": target_format}
+			result = convert_one(file_info)
+			converted_files.append(result)
+
+	# Zip converted files if more than one
+	if len(converted_files) > 1:
+		zip_filename = f"converted_{uuid.uuid4().hex}.zip"
+		zip_path = os.path.join(CONVERTED_FOLDER, zip_filename)
+		with zipfile.ZipFile(zip_path, 'w') as zipf:
+			for converted_file in converted_files:
+				file_path = os.path.join(CONVERTED_FOLDER, converted_file)
+				zipf.write(file_path, arcname=converted_file)
+		return send_file(zip_path, as_attachment=True)
+	else:
+		return send_file(os.path.join(CONVERTED_FOLDER, converted_files[0]), as_attachment=True)
+\end{minted}
+
+\end{document}
