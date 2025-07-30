@@ -85,6 +85,8 @@
 				return;
 			}
 
+			let extensions = files.map(file => file.name.split('.').pop().toLowerCase());
+			extensions = [...new Set(extensions)];
 			let fileTypes = files.map(file => {
 				const ext = file.name.split('.').pop().toLowerCase();
 				return getFileType(ext) || "unknown";
@@ -97,6 +99,10 @@
 			// If only video, add audio
 			if (uniqueTypes.length === 1 && uniqueTypes[0] === "video") {
 				uniqueTypes.push("audio");
+			}
+			// If extension is pdf and no other extensions, add image
+			if (extensions.includes("pdf") && extensions.length === 1) {
+				uniqueTypes.push("image");
 			}
 
 			// Clear previous options
@@ -347,6 +353,8 @@
 			link.href = url;
 			if (files.length > 1) {
 				link.download = `converted_files.zip`;
+			} else if (blob.type === "application/zip") {
+				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_converted.zip`;
 			} else {
 				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_converted.${formatSelect.value}`;
 			}

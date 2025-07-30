@@ -13,3 +13,4 @@ numpy
 # Document processing
 pdfminer.six
 fpdf
+pdf2image

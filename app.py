@@ -219,6 +219,36 @@ def convert_one(file):
 		else:
 			return jsonify({"error": "Unsupported document conversion"}), 400
 
+	elif ext == "pdf" and target_format in image_exts:
+		try:
+			from pdf2image import convert_from_path
+			pages = convert_from_path(input_path)
+			for i, page in enumerate(pages):
+				page_output_filename = f"{base}_{i + 1}.png"
+				page_output_path = os.path.join(UPLOAD_FOLDER, page_output_filename)
+				page.save(page_output_path, "PNG")
+			# Convert the pages to the target format using convert one
+			tmp_filenames = []
+			if target_format != "png":
+				for i, page in enumerate(pages):
+					page_output_filename = f"{base}_{i + 1}.png"
+					tmp_filenames.append(convert_one({"filename": page_output_filename, "target_format": target_format}))
+			# Zip all of the files into a single file
+			if len(tmp_filenames) > 1:
+				zip_filename = f"{base}_pages.zip"
+				zip_path = os.path.join(CONVERTED_FOLDER, zip_filename)
+				with zipfile.ZipFile(zip_path, 'w') as zipf:
+					for i in tmp_filenames:
+						zipf.write(os.path.join(CONVERTED_FOLDER, i), arcname=i)
+				return zip_filename
+			else:
+				os.rename(os.path.join(UPLOAD_FOLDER, f"{base}_1.png"), os.path.join(CONVERTED_FOLDER, output_filename))
+				return output_filename
+		except ImportError as e:
+			print("PDF2Image error: pdf2image module not found")
+			print("Error details:", e)
+			return jsonify({"error": "pdf2image is required for PDF to image conversion."}), 500
+
 	else:
 		return {"error": "Unsupported conversion"}
 	
