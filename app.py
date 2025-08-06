@@ -5,6 +5,8 @@ import uuid
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
 import zipfile
+import tarfile
+import tempfile
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
@@ -15,6 +17,7 @@ image_exts = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "
 audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "alac", "amr", "mka"]
 video_exts = ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv", "mpeg", "mpg", "3gp", "m4v", "ts"]
 doc_exts = ["pdf", "txt"]
+archive_exts = ["zip", "rar", "tar", "gz", "7z", "bz2", "xz"]
 
 # Declare command line argument variable
 is_backup_enabled = False
@@ -105,6 +108,34 @@ def image_to_colored_svg_kmeans(image_path, output_svg, num_colors=8, min_region
 
 	dwg.save()
 
+def zip_to_tar(zip_path, tar_path):
+	"""
+	Convert a zip archive to a tar.gz archive.
+	Args:
+		zip_path (str): Path to the input zip file.
+		tar_path (str): Path to save the output tar.gz file.
+	"""
+	with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+		with tempfile.TemporaryDirectory() as temp_dir:
+			zip_ref.extractall(temp_dir)
+
+			with tarfile.open(tar_path, 'w:gz') as tar:
+				tar.add(temp_dir, arcname='.')
+
+def sevenz_to_zip(sevenz_path, zip_path):
+	import py7zr
+	"""
+	Convert a 7z archive to a zip archive.
+	Args:
+		sevenz_path (str): Path to the input 7z file.
+		zip_path (str): Path to save the output zip file.
+	"""
+	with py7zr.SevenZipFile(sevenz_path, mode='r') as archive:
+		with zipfile.ZipFile(zip_path, 'w') as zipf:
+			for file in archive.getnames():
+				data = archive.read(file)
+				zipf.writestr(file, data)
+
 def convert_one(file):
 	"""
 	Convert a single file.
@@ -118,6 +149,10 @@ def convert_one(file):
 	base = uuid.uuid4().hex
 	output_filename = f"{base}.{target_format}"
 	output_path = os.path.join(CONVERTED_FOLDER, output_filename)
+
+	# If asking to convert to the same format, just return the original file
+	if ext == target_format:
+		return {"filename": filename, "type": detect_type(ext)}
 
 	if ext in image_exts and target_format in image_exts:
 		try:
@@ -182,6 +217,15 @@ def convert_one(file):
 			print("FFmpeg error:", out.stderr)
 			return jsonify({"error": "Audio conversion failed."}), 500
 
+	elif ext in audio_exts and target_format in video_exts:
+		args = ["ffmpeg", "-y", "-i", input_path, "-c:a", "aac", output_path]
+
+		try:
+			subprocess.run(args, check=True)
+		except subprocess.CalledProcessError as e:
+			print("FFmpeg error:", e)
+			return jsonify({"error": "Audio to video conversion failed."}), 500
+
 	elif ext in video_exts and target_format in video_exts:
 		args = ["ffmpeg", "-y", "-i", input_path, output_path]
 
@@ -190,6 +234,15 @@ def convert_one(file):
 		except subprocess.CalledProcessError as e:
 			print("FFmpeg error:", e)
 			return jsonify({"error": "Video conversion failed."}), 500
+
+	elif ext in video_exts and target_format in image_exts:
+		args = ["ffmpeg", "-y", "-i", input_path, "-frames:v", "1", output_path]
+
+		try:
+			subprocess.run(args, check=True)
+		except subprocess.CalledProcessError as e:
+			print("FFmpeg error:", e)
+			return jsonify({"error": "Video to image conversion failed."}), 500
 
 	elif ext in doc_exts and target_format in doc_exts:
 		if ext == "pdf" and target_format == "txt":
@@ -249,13 +302,30 @@ def convert_one(file):
 			print("Error details:", e)
 			return jsonify({"error": "pdf2image is required for PDF to image conversion."}), 500
 
+	elif ext in archive_exts and target_format in archive_exts:
+		if ext == "zip" and target_format == "gz":
+			zip_to_tar(input_path, output_path)
+		elif ext == "7z" and target_format == "zip":
+			sevenz_to_zip(input_path, output_path)
+		elif ext == "gz" and target_format == "zip":
+			with tarfile.open(input_path, 'r') as tar:
+				with zipfile.ZipFile(output_path, 'w') as zipf:
+					for member in tar.getmembers():
+						if member.isfile():
+							file_data = tar.extractfile(member).read()
+							zipf.writestr(member.name, file_data)
+		elif ext == "gz" and target_format == "zip":
+			with open(input_path, 'rb') as gz_file:
+				with zipfile.ZipFile(output_path, 'w') as zipf:
+					zipf.writestr(os.path.basename(input_path), gz_file.read())
+		else:
+			return {"error": "Unsupported archive conversion"}
+
 	else:
 		return {"error": "Unsupported conversion"}
-	
+
 	return output_filename
 
-# TODO: use BytesIO and give data to convert_one, then once converted, delete file in UPLOAD_FOLDER. on last file, remove the UPLOAD_FOLDER
-	# no cleanup
 @app.route("/convert", methods=["POST"])
 def convert():
 	"""
@@ -289,6 +359,77 @@ def convert():
 	else:
 		return send_file(os.path.join(CONVERTED_FOLDER, converted_files[0]), as_attachment=True)
 
+priority = {
+	"image": 0,
+	"audio": 1,
+	"video": 2,
+	"document": 3,
+	"archive": 4
+}
+
+# FIXME: Currently, only base formats w/ ZIP work
+@app.route("/merge", methods=["POST"])
+def merge():
+	"""
+	Merge uploaded files into a single polyglot file.
+	"""
+	files = request.files.getlist("files")
+	if not files or len(files) < 2:
+		return jsonify({"error": "At least two files are required for merging"}), 400
+
+	base = uuid.uuid4().hex
+	output_filename = f"{base}_merged"
+	output_path = os.path.join(CONVERTED_FOLDER, output_filename)
+
+	file_arr = []
+	for file in files:
+		if file:
+			filename = secure_filename(file.filename)
+			ext = os.path.splitext(filename)[1].lower()[1::]
+			path = os.path.join(UPLOAD_FOLDER, filename)
+			file.save(path)
+			file_type = detect_type(ext)
+			if file_type == "image":
+				output_path = convert_one({"filename": filename, "target_format": "ico"})
+			elif file_type == "audio" or file_type == "video":
+				output_path = convert_one({"filename": filename, "target_format": "mp4"})
+			elif file_type == "document":
+				output_path = convert_one({"filename": filename, "target_format": "pdf"})
+			elif file_type == "archive":
+				output_path = convert_one({"filename": filename, "target_format": "zip"})
+
+			if isinstance(output_path, dict):
+				output_path = os.path.join(UPLOAD_FOLDER, output_path["filename"])
+			else:
+				output_path = os.path.join(CONVERTED_FOLDER, output_path)
+
+			file_arr.append(output_path)
+
+	# Merge all files into a single polyglot file
+	file_arr = sorted(file_arr, key=lambda f: priority.get(detect_type(f.split('.')[-1].lower()), 5))
+	base_file = None
+	for file in file_arr:
+		if detect_type(file.split('.')[-1].lower()) in ["audio", "video", "document"]:
+			base_file = file
+			break
+
+	if not base_file:
+		return jsonify({"error": "No suitable base file (audio/video/document)"}), 400
+
+	# Create a polyglot file by appending files
+	merged_path = os.path.join(CONVERTED_FOLDER, f"{uuid.uuid4().hex}_merged.polyglot")
+
+	# Merge the files properly (use byte concatenation with open in binary mode)
+	with open(merged_path, 'wb') as merged_file:
+		with open(base_file, 'rb') as base_f:
+			merged_file.write(base_f.read())
+
+		for file in file_arr:
+			if file != base_file:
+				with open(file, 'rb') as f:
+					merged_file.write(f.read())
+	return send_file(merged_path, as_attachment=True, download_name=f"{output_filename}.polyglot")
+
 def detect_type(ext):
 	"""
 	Detect the type of file based on its extension.
@@ -303,6 +444,8 @@ def detect_type(ext):
 		return "video"
 	elif ext in doc_exts:
 		return "document"
+	elif ext in archive_exts:
+		return "archive"
 	else:
 		return "unknown"
 

@@ -179,7 +179,7 @@ h1 {
 	flex-wrap: wrap;
 }
 
-select, button:not(#clearAllBtn):not(.remove-btn):not(#convertBtn) {
+select, button:not(#clearAllBtn):not(.remove-btn):not(#convertBtn):not(#mergeBtn) {
 	background-color: var(--bg-light);
 	color: var(--text-light);
 	border: 1px solid var(--border-color);
@@ -207,6 +207,16 @@ button:disabled, select:disabled {
 
 #convertBtn.active:hover {
 	background-color: var(--success-hover-color);
+}
+
+#mergeBtn.active {
+	background-color: var(--primary-color);
+	color: #fff;
+	border: 1px solid var(--primary-color);
+}
+
+#mergeBtn.active:hover {
+	background-color: #4338ca;
 }
 
 #clearAllBtn, .remove-btn {

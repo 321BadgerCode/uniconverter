@@ -31,6 +31,7 @@
 				<option value="">Select conversion format</option>
 			</select>
 			<button id="convertBtn" disabled>Convert</button>
+			<button id="mergeBtn" disabled style="display:none;" onclick="mergeFiles()">Merge</button>
 		</div>
 	</div>
 
@@ -47,6 +48,7 @@
 		const folderInput = document.getElementById("folderInput");
 		const formatSelect = document.getElementById("formatSelect");
 		const convertBtn = document.getElementById("convertBtn");
+		const mergeBtn = document.getElementById("mergeBtn");
 
 		let files = [];
 		let currentType = null;
@@ -91,17 +93,38 @@
 				const ext = file.name.split('.').pop().toLowerCase();
 				return getFileType(ext) || "unknown";
 			});
-			let uniqueTypes = [...new Set(fileTypes)];
-			// If video and audio are mixed, get rid of video
-			if (uniqueTypes.includes("video") && uniqueTypes.includes("audio")) {
-				uniqueTypes = uniqueTypes.filter(type => type !== "video");
+			// Turn on merge button if conditions are met
+			// Needs 1 of the following formats: video, audio, document
+			// Needs at least 1 of the following (different from base): image, video, audio, document, archive
+			// FIXME: This is a temporary solution, needs better handling to actually meet the criteria above
+			if (fileTypes.length > 1 && (fileTypes.includes("video") || fileTypes.includes("audio") || fileTypes.includes("document")) && fileTypes.some(type => ["image", "document", "archive"].includes(type))) {
+				mergeBtn.style.display = "inline-block";
+				mergeBtn.disabled = false;
+				mergeBtn.classList.toggle("active", !mergeBtn.disabled);
 			}
-			// If only video, add audio
-			if (uniqueTypes.length === 1 && uniqueTypes[0] === "video") {
+			else {
+				mergeBtn.style.display = "none";
+				mergeBtn.disabled = true;
+				mergeBtn.classList.remove("active");
+			}
+			let uniqueTypes = [...new Set(fileTypes)];
+			// If image is present, remove document (except PDF)
+			if (uniqueTypes.includes("image") && uniqueTypes.includes("document")) {
+				uniqueTypes = uniqueTypes.filter(type => type !== "document");
+			}
+			// Video can convert to audio and audio can convert to video
+			if (uniqueTypes.includes("video") && !uniqueTypes.includes("audio") && !uniqueTypes.includes("image")) {
 				uniqueTypes.push("audio");
 			}
-			// If extension is pdf and no other extensions, add image
-			if (extensions.includes("pdf") && extensions.length === 1) {
+			if (uniqueTypes.includes("audio") && !uniqueTypes.includes("video")) {
+				uniqueTypes.push("video");
+			}
+			// Video can convert to image
+			if (uniqueTypes.includes("video") && !uniqueTypes.includes("image")) {
+				uniqueTypes.push("image");
+			}
+			// If extension is PDF and no other extensions from document, add image
+			if (extensions.includes("pdf") && !uniqueTypes.includes("image") && !extensions.some(ext => formatOptions.document.includes(ext) && ext !== "pdf")) {
 				uniqueTypes.push("image");
 			}
 
@@ -179,9 +202,14 @@
 		 * @return {boolean} True if the type is compatible, false otherwise.
 		 */
 		function isCompatibleType(type, type2) {
-			if (type === "video" && type2 === "audio"
-				|| type === "audio" && type2 === "video") return true;
-			return type === type2;
+			let compatible = {
+				image: ["image"],
+				video: ["image", "audio", "video"],
+				audio: ["audio", "video"],
+				document: ["image", "document"],
+				archive: ["archive"]
+			};
+			return (compatible[type] && compatible[type].includes(type2)) || (compatible[type2] && compatible[type2].includes(type));
 		}
 
 		/**
@@ -203,9 +231,10 @@
 					continue;
 				}
 
-				// Ensure all files are of the same type (e.g., all images)
+				// FIXME: Implement better file type compatibility check with merge checking
+				// Ensure all files are of compatible types
 				if (files.length > 0 && currentType && !isCompatibleType(currentType, fileMainType)) {
-					showNotification(`You can only upload files of the same type. Please clear existing files to switch types.`);
+					showNotification(`You can only upload files of compatible types. Please clear existing files before switching types.`);
 					continue;
 				}
 
@@ -292,6 +321,7 @@
 			if (formatOptions.video.includes(ext)) return "video";
 			if (formatOptions.audio.includes(ext)) return "audio";
 			if (formatOptions.document.includes(ext)) return "document";
+			if (formatOptions.archive.includes(ext)) return "archive";
 			return null; // Unsupported type
 		}
 
@@ -470,6 +500,7 @@
 				const audio = document.createElement("audio");
 				audio.src = URL.createObjectURL(file);
 				audio.controls = true;
+				badge.style.top = "-12px"; // Adjust badge position to be above audio controls
 				preview.appendChild(audio);
 			} else if (["txt"].includes(ext)) {
 				const textContent = await readFileAsText(file);
@@ -517,8 +548,37 @@
 			document.getElementById("file-container").innerHTML = "";
 			adjustFormatOptions();
 			convertBtn.disabled = true;
+			mergeBtn.disabled = true;
+			mergeBtn.style.display = "none";
 			convertBtn.classList.remove("active");
 			dropZone.classList.remove("active");
+			mergeBtn.classList.remove("active");
+		}
+
+		/**
+		 * @brief Merges files into a polyglot file.
+		 * @return {void}
+		 */
+		function mergeFiles() {
+			const formData = new FormData();
+			for (const file of files) {
+				formData.append("files", file);
+			}
+			formData.append("target_format", "polyglot");
+
+			fetch("/merge", {
+				method: "POST",
+				body: formData
+			})
+			.then(res => res.blob())
+			.then(blob => {
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement("a");
+				link.href = url;
+				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_merged.polyglot`;
+				link.click();
+			})
+			.catch(err => showNotification(`Error merging files: ${err.message}`));
 		}
 	</script>
 </body>

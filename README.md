@@ -25,7 +25,7 @@ Welcome to **Uniconverter**! This program allows you to convert files of one typ
 
 To get started with the program, follow the steps below:
 
-1. **Clone the Repository**
+**Clone the Repository**
 ```sh
 git clone https://github.com/321BadgerCode/uniconverter.git
 cd ./uniconverter/
@@ -52,7 +52,7 @@ To use the program, you can either run it in python or within a [Docker](https:/
 
 ### Using Python
 
-1. **Run the program**
+**Run the program**
 ```sh
 python ./app.py
 ```
