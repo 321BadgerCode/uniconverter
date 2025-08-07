@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="./asset/logo.svg" alt="Uniconverter logo" width="200" height="200">
+	<img src="./asset/logo.svg" alt="Uniconverter logo" width="200" height="200"/>
 </p>
 
 <h1 align="center">Uniconverter</h1>
@@ -7,6 +7,13 @@
 <p align="center">
 	<strong>Convert filetypes!</strong>
 </p>
+
+<center>
+	<img style="vertical-align: middle;" src="./asset/logos/html.svg" alt="HTML logo" width="40"/>
+	<img style="vertical-align: middle;" src="./asset/logos/javascript.svg" alt="Python logo" width="40"/>
+	<img style="vertical-align: middle;" src="./asset/logos/python.svg" alt="JavaScript logo" width="40"/>
+	<img style="vertical-align: middle;" src="./asset/logos/docker.svg" alt="Docker logo" width="40"/>
+</center>
 
 ## 🚀 Overview
 
@@ -20,6 +27,8 @@ Welcome to **Uniconverter**! This program allows you to convert files of one typ
 - **Folder Support**: Users can upload entire folders of files, making it convenient for batch conversions.
 - **Multimodality Compatibility**: The program can convert files to different formats, such as video to audio.
 - **No Conversion Limit**: There are no caps on the number or size of files you can convert.
+- **Docker Compatibility**: The program can be run in a Docker container, making it easy to deploy and use on any system.
+- **PWA Support**: The program can be installed as a Progressive Web App (PWA), allowing users to run it like a native application on their devices.
 
 ## 🛠️ Installation
 
