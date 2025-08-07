@@ -120,6 +120,22 @@ docker rmi uniconverter-web # Remove the Docker image
 
 </details>
 
+## 🛠️ Build
+
+To build the program into an executable (Electron app), you can run the following commands:
+```sh
+npm install -g nativefier
+python ./app.py
+```
+
+Then, run the following in a separate terminal session:
+```sh
+nativefier --single-instance http://localhost:5000
+```
+
+> [!NOTE]
+> The `nativefier` command will create a standalone application that can be run on your system. You can find the generated folder in the current directory, labeled `Uniconverter-linux-x64` (or similar, depending on your OS). You cannot delete the resource files found in that generated folder after building, as they are required for the application to run.
+
 ## 🖼️ Screenshots
 
 <p align="center">
