@@ -5,7 +5,7 @@
 <h1 align="center">Uniconverter</h1>
 
 <p align="center">
-	<strong>Convert filetypes!</strong>
+	<strong>Your files, your format!</strong>
 </p>
 
 <center>
