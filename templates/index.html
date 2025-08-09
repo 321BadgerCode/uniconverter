@@ -53,6 +53,14 @@
 		let files = [];
 		let currentType = null;
 
+		let COMPATIBLE_MATRIX = {
+			image: ["image"],
+			video: ["image", "audio", "video"],
+			audio: ["audio", "video"],
+			document: ["image", "document"],
+			archive: ["archive"]
+		};
+
 		// Define supported formats
 		const formatOptions = {
 			image: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "tga", "tif", "tiff", "ppm", "xbm", "icns"],
@@ -93,11 +101,11 @@
 				const ext = file.name.split('.').pop().toLowerCase();
 				return getFileType(ext) || "unknown";
 			});
+			let uniqueTypes = [...new Set(fileTypes)];
 			// Turn on merge button if conditions are met
 			// Needs 1 of the following formats: video, audio, document
 			// Needs at least 1 of the following (different from base): image, video, audio, document, archive
-			// FIXME: This is a temporary solution, needs better handling to actually meet the criteria above
-			if (fileTypes.length > 1 && (fileTypes.includes("video") || fileTypes.includes("audio") || fileTypes.includes("document")) && fileTypes.some(type => ["image", "document", "archive"].includes(type))) {
+			if (fileTypes.length > 1 && uniqueTypes.length === fileTypes.length && (fileTypes.includes("video") || fileTypes.includes("audio") || fileTypes.includes("document")) && fileTypes.some(type => ["image", "document", "archive"].includes(type))) {
 				mergeBtn.style.display = "inline-block";
 				mergeBtn.disabled = false;
 				mergeBtn.classList.toggle("active", !mergeBtn.disabled);
@@ -107,32 +115,30 @@
 				mergeBtn.disabled = true;
 				mergeBtn.classList.remove("active");
 			}
-			let uniqueTypes = [...new Set(fileTypes)];
-			// If image is present, remove document (except PDF)
-			if (uniqueTypes.includes("image") && uniqueTypes.includes("document")) {
-				uniqueTypes = uniqueTypes.filter(type => type !== "document");
-			}
-			// Video can convert to audio and audio can convert to video
-			if (uniqueTypes.includes("video") && !uniqueTypes.includes("audio") && !uniqueTypes.includes("image")) {
-				uniqueTypes.push("audio");
-			}
-			if (uniqueTypes.includes("audio") && !uniqueTypes.includes("video")) {
-				uniqueTypes.push("video");
-			}
-			// Video can convert to image
-			if (uniqueTypes.includes("video") && !uniqueTypes.includes("image")) {
-				uniqueTypes.push("image");
-			}
-			// If extension is PDF and no other extensions from document, add image
-			if (extensions.includes("pdf") && !uniqueTypes.includes("image") && !extensions.some(ext => formatOptions.document.includes(ext) && ext !== "pdf")) {
-				uniqueTypes.push("image");
-			}
+
+			// Use the COMPATIBLE_MATRIX to populate format options
+			const compatibleFormats = uniqueTypes.reduce((acc, type) => {
+				if (COMPATIBLE_MATRIX[type]) {
+					for (const compatibleType of COMPATIBLE_MATRIX[type]) {
+						if (!acc.includes(compatibleType)) {
+							acc.push(compatibleType);
+						}
+					}
+				}
+				return acc;
+			}, []);
+			// Filter out duplicates and unsupported formats
+			const uniqueCompatibleFormats = [...new Set(compatibleFormats)];
+			// Filter out formats that aren't compatible by using the COMPATIBLE_MATRIX
+			const filteredFormats = uniqueCompatibleFormats.filter(format => {
+				return uniqueTypes.every(type => COMPATIBLE_MATRIX[type] && COMPATIBLE_MATRIX[type].includes(format));
+			});
 
 			// Clear previous options
 			formatSelect.innerHTML = `<option value="">Select conversion format</option>`;
 
 			// Add options based on current files
-			for (const type of uniqueTypes) {
+			for (const type of filteredFormats) {
 				if (formatOptions[type]) {
 					for (const format of formatOptions[type]) {
 						// JPEG is already covered by JPG
@@ -196,23 +202,6 @@
 		}
 
 		/**
-		 * @brief Check if file types are compatible.
-		 * @param {string} type - The type of the file to check.
-		 * @param {string} type2 - The type to compare against.
-		 * @return {boolean} True if the type is compatible, false otherwise.
-		 */
-		function isCompatibleType(type, type2) {
-			let compatible = {
-				image: ["image"],
-				video: ["image", "audio", "video"],
-				audio: ["audio", "video"],
-				document: ["image", "document"],
-				archive: ["archive"]
-			};
-			return (compatible[type] && compatible[type].includes(type2)) || (compatible[type2] && compatible[type2].includes(type));
-		}
-
-		/**
 		 * @brief Processes a list of files from any input source.
 		 * @param {FileList} incomingFiles - The list of files to process.
 		 * @return {void}
@@ -228,13 +217,6 @@
 				// Check for valid file type
 				if (!file.type || !formatOptions[fileMainType]) {
 					showNotification(`File type for "${file.name}" is not supported.`);
-					continue;
-				}
-
-				// FIXME: Implement better file type compatibility check with merge checking
-				// Ensure all files are of compatible types
-				if (files.length > 0 && currentType && !isCompatibleType(currentType, fileMainType)) {
-					showNotification(`You can only upload files of compatible types. Please clear existing files before switching types.`);
 					continue;
 				}
 
@@ -382,7 +364,7 @@
 			const link = document.createElement("a");
 			link.href = url;
 			if (files.length > 1) {
-				link.download = `converted_files.zip`;
+				link.download = "converted_files.zip";
 			} else if (blob.type === "application/zip") {
 				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_converted.zip`;
 			} else {

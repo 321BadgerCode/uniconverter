@@ -7,6 +7,8 @@ from werkzeug.utils import secure_filename
 import zipfile
 import tarfile
 import tempfile
+import struct
+import binascii
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
@@ -315,7 +317,7 @@ def convert_one(file):
 							file_data = tar.extractfile(member).read()
 							zipf.writestr(member.name, file_data)
 		elif ext == "gz" and target_format == "zip":
-			with open(input_path, 'rb') as gz_file:
+			with open(input_path, "rb") as gz_file:
 				with zipfile.ZipFile(output_path, 'w') as zipf:
 					zipf.writestr(os.path.basename(input_path), gz_file.read())
 		else:
@@ -359,76 +361,327 @@ def convert():
 	else:
 		return send_file(os.path.join(CONVERTED_FOLDER, converted_files[0]), as_attachment=True)
 
-priority = {
-	"image": 0,
-	"audio": 1,
-	"video": 2,
-	"document": 3,
+PRIORITY = {
+	"video": 1,
+	"document": 2,
+	"image": 3,
 	"archive": 4
 }
 
-# FIXME: Currently, only base formats w/ ZIP work
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+
+def make_png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+	"""
+	Create PNG chunk bytes: length(4) + type(4) + data + crc(4).
+	Args:
+		chunk_type (bytes): 4-byte chunk type (e.g., b'tEXt').
+		data (bytes): Chunk data.
+	"""
+	assert len(chunk_type) == 4
+	length = struct.pack(">I", len(data))
+	crc = struct.pack(">I", binascii.crc32(chunk_type + data) & 0xffffffff)
+	return length + chunk_type + data + crc
+
+def insert_chunk_before_iend(png_bytes: bytes, chunk_type: bytes, chunk_data: bytes) -> bytes:
+	"""
+	Insert a chunk (type,data) immediately before the IEND chunk.
+	Args:
+		png_bytes (bytes): Original PNG bytes.
+		chunk_type (bytes): 4-byte chunk type (e.g., b'tEXt').
+		chunk_data (bytes): Chunk data to insert.
+	"""
+	# Look for the IEND chunk start: \x00\x00\x00\x00IEND
+	marker = b"\x00\x00\x00\x00IEND"
+	idx = png_bytes.rfind(marker)
+	if idx == -1:
+		# Fallback: look for "IEND" anywhere
+		idx = png_bytes.rfind(b"IEND")
+		if idx == -1:
+			raise ValueError("IEND not found in PNG")
+		# Find the 4 bytes length before it if possible
+		idx = idx - 4
+	chunk = make_png_chunk(chunk_type, chunk_data)
+	return png_bytes[:idx] + chunk + png_bytes[idx:]
+
+def find_png_inside_ico(ico_bytes: bytes) -> int:
+	"""
+	Return index of PNG signature inside ICO (or -1).
+	Args:
+		ico_bytes (bytes): ICO file bytes.
+	"""
+	return ico_bytes.find(PNG_SIG)
+
+def append_mp4_box_bytes(base_bytes: bytes, box_type: bytes, payload: bytes, usertype: bytes = None) -> bytes:
+	"""
+	Append a valid top-level MP4 box with given box_type (4 bytes).
+	If box_type == b'uuid' you must provide a 16-byte usertype (usertype).
+	Args:
+		base_bytes (bytes): Original MP4 bytes.
+		box_type (bytes): 4-byte box type (e.g., b'uuid').
+		payload (bytes): Payload data to append.
+		usertype (bytes, optional): 16-byte usertype for 'uuid' box type. Defaults to None.
+	"""
+	if box_type == b'uuid':
+		if usertype is None:
+			usertype = uuid.uuid4().bytes # 16 bytes
+		header_size = 8 + 16 # size(4) + type(4) + usertype(16)
+		total_size = header_size + len(payload)
+		return base_bytes + struct.pack(">I", total_size) + box_type + usertype + payload
+	else:
+		header_size = 8
+		total_size = header_size + len(payload)
+		return base_bytes + struct.pack(">I", total_size) + box_type + payload
+
+def verify_mp4(path: str) -> bool:
+	"""
+	Use ffprobe to quickly check basic mp4 readability.
+	Args:
+		path (str): Path to the MP4 file.
+	"""
+	try:
+		cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]
+		res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
+		return res.returncode == 0 and res.stdout.strip() != b""
+	except Exception:
+		return False
+
+def extract_pdf_bytes(blob: bytes):
+	"""
+	Find a %PDF- ... %%EOF region inside blob and return bytes or None.
+	Args:
+		blob (bytes): The binary data to search for PDF content.
+	"""
+	start = blob.find(b"%PDF-")
+	if start == -1:
+		return None
+	# Find last %%EOF after start
+	eof_idx = blob.find(b"%%EOF", start)
+	if eof_idx == -1:
+		return None
+	# Include %%EOF (and possibly following newline)
+	end = eof_idx + len(b"%%EOF")
+	# If there are multiple EOFs, prefer the last one after start:
+	idx = blob.rfind(b"%%EOF")
+	if idx >= start:
+		end = idx + len(b"%%EOF")
+	return blob[start:end]
+
+def extract_png_bytes(blob: bytes):
+	start = blob.find(PNG_SIG)
+	if start == -1:
+		return None
+	# Find IEND
+	iend_marker = b"\x00\x00\x00\x00IEND"
+	iend_idx = blob.find(iend_marker, start)
+	if iend_idx == -1:
+		return None
+	# Grab until IEND + CRC(4)
+	end = iend_idx + 4 + 4 + 4 # Length(4)=0 + "IEND"(4) + CRC(4)
+	# Safer: find the CRC 4 bytes after the IEND sequence
+	return blob[start:end]
+
+def merge_with_mp4_base(base_path: str, extras: list, merged_path: str):
+	"""
+	Merge extras into an MP4 base file by appending them as 'uuid' boxes.
+	Args:
+		base_path (str): MP4 path.
+		extras (list): List of tuples (filename_on_disk, mime_type/extension).
+		strategy (str): Append each extra as a uuid box (so mp4 players ignore it).
+		After building merged file we verify with ffprobe (for mp4) and try to find magic for each extra.
+	"""
+	with open(base_path, "rb") as f:
+		base_bytes = f.read()
+
+	for (extra_path, ext) in extras:
+		with open(extra_path, "rb") as ef:
+			payload = ef.read()
+		# Use "uuid" box so the data is a valid top-level atom
+		base_bytes = append_mp4_box_bytes(base_bytes, b"uuid", payload)
+
+	with open(merged_path, "wb") as out:
+		out.write(base_bytes)
+
+	# Verify mp4 is still readable
+	if not verify_mp4(merged_path):
+		return False, "ffprobe failed; appended atoms probably broke the mp4 structure."
+
+	# Verify each extra's magic exists somewhere in the merged file
+	blob = base_bytes
+	for (_, ext) in extras:
+		ext = ext.lower()
+		ok = False
+		if ext in ("pdf",):
+			ok = extract_pdf_bytes(blob) is not None
+		elif ext in ("png", "ico"):
+			ok = extract_png_bytes(blob) is not None
+		elif ext in ("zip",):
+			ok = blob.find(b"PK\x03\x04") != -1
+		else:
+			ok = True # Best-effort
+		if not ok:
+			return False, f"Could not locate embedded {ext} by scanning merged file."
+	return True, "OK"
+
+def merge_with_png_base(base_path: str, extras: list, merged_path: str):
+	"""
+	Merge extras into a PNG base file by inserting them as ancillary chunks.
+	Insert extras into PNG base as an ancillary chunk before IEND.
+	For ICO base we need to find PNG inside ICO and inject there.
+	This keeps the PNG valid; extras are findable by scanning for their magic.
+	Args:
+		base_path (str): PNG path.
+		extras (list): List of tuples (filename_on_disk, mime_type/extension).
+		merged_path (str): Output path for the merged PNG.
+	"""
+	with open(base_path, "rb") as f:
+		base_bytes = f.read()
+
+	# If ICO with PNG inside, find PNG offset and replace that region
+	if base_bytes[:8] != PNG_SIG and find_png_inside_ico(base_bytes) != -1:
+		ico_bytes = base_bytes
+		png_idx = find_png_inside_ico(ico_bytes)
+		png_blob = ico_bytes[png_idx:]
+		# Inject a chunk containing concatenated extras (we'll just concatenate extras)
+		all_extra_payload = b""
+		for (extra_path, ext) in extras:
+			with open(extra_path, "rb") as ef:
+				all_extra_payload += b"\n--EMBED--" + os.path.basename(extra_path).encode("utf-8") + b"\n" + ef.read()
+		new_png = insert_chunk_before_iend(png_blob, b"pLTg", all_extra_payload)
+		merged_bytes = ico_bytes[:png_idx] + new_png
+		with open(merged_path, "wb") as out:
+			out.write(merged_bytes)
+		# Quick verify: PNG still has signature & IEND
+		if new_png.startswith(PNG_SIG) and b"IEND" in new_png:
+			return True, "OK"
+		return False, "PNG injection failed"
+	else:
+		# Plain PNG
+		all_extra_payload = b""
+		for (extra_path, ext) in extras:
+			with open(extra_path, "rb") as ef:
+				all_extra_payload += b"\n--EMBED--" + os.path.basename(extra_path).encode("utf-8") + b"\n" + ef.read()
+		new_png = insert_chunk_before_iend(base_bytes, b"pLTg", all_extra_payload)
+		with open(merged_path, "wb") as out:
+			out.write(new_png)
+		return True, "OK"
+
+def merge_with_pdf_base(base_path: str, extras: list, merged_path: str):
+	"""
+	Merge extras into a PDF base file by embedding them as attachments.
+	Use pypdf to attach files into the PDF as real attachments (embedded files).
+	This keeps PDF valid and attachments extractable, but note: attachment extraction is via PDF UI,
+	not by opening the merged file as the other file type directly.
+	Args:
+		base_path (str): PDF path.
+		extras (list): List of tuples (filename_on_disk, mime_type/extension).
+		merged_path (str): Output path for the merged PDF.
+	"""
+	try:
+		from pypdf import PdfReader, PdfWriter
+		writer = PdfWriter(clone_from=base_path)
+		for (extra_path, ext) in extras:
+			with open(extra_path, "rb") as ef:
+				data = ef.read()
+			writer.add_attachment(filename=os.path.basename(extra_path), data=data)
+		with open(merged_path, "wb") as out:
+			writer.write(out)
+		# Quick verify
+		r = PdfReader(merged_path)
+		# Attachments may be at r.attachments or accessed by names; ensure file opens
+		return True, "OK"
+	except Exception as e:
+		return False, f"PDF embedding failed: {e}"
+
+# FIXME: Fix merging of image files to work
 @app.route("/merge", methods=["POST"])
 def merge():
 	"""
-	Merge uploaded files into a single polyglot file.
+	Merge multiple files into a single file based on their types.
+	Files are converted to a common format if necessary.
+	Returns the merged file as a download.
 	"""
 	files = request.files.getlist("files")
 	if not files or len(files) < 2:
 		return jsonify({"error": "At least two files are required for merging"}), 400
 
-	base = uuid.uuid4().hex
-	output_filename = f"{base}_merged"
-	output_path = os.path.join(CONVERTED_FOLDER, output_filename)
+	converted = []
+	# Convert each incoming file to the target format
+	for f in files:
+		filename = secure_filename(f.filename)
+		ext = os.path.splitext(filename)[1].lower().lstrip(".")
+		save_path = os.path.join(UPLOAD_FOLDER, filename)
+		f.save(save_path)
 
-	file_arr = []
-	for file in files:
-		if file:
-			filename = secure_filename(file.filename)
-			ext = os.path.splitext(filename)[1].lower()[1::]
-			path = os.path.join(UPLOAD_FOLDER, filename)
-			file.save(path)
-			file_type = detect_type(ext)
-			if file_type == "image":
-				output_path = convert_one({"filename": filename, "target_format": "ico"})
-			elif file_type == "audio" or file_type == "video":
-				output_path = convert_one({"filename": filename, "target_format": "mp4"})
-			elif file_type == "document":
-				output_path = convert_one({"filename": filename, "target_format": "pdf"})
-			elif file_type == "archive":
-				output_path = convert_one({"filename": filename, "target_format": "zip"})
+		file_type = detect_type(ext)
+		target = None
+		if file_type == "image":
+			target = "ico"
+		elif file_type in ("audio", "video"):
+			target = "mp4"
+		elif file_type == "document":
+			target = "pdf"
+		elif file_type == "archive":
+			target = "zip"
 
-			if isinstance(output_path, dict):
-				output_path = os.path.join(UPLOAD_FOLDER, output_path["filename"])
+		if target:
+			conv = convert_one({"filename": filename, "target_format": target})
+			if isinstance(conv, dict):
+				conv_path = os.path.join(UPLOAD_FOLDER, conv["filename"])
 			else:
-				output_path = os.path.join(CONVERTED_FOLDER, output_path)
+				conv_path = os.path.join(CONVERTED_FOLDER, conv)
+		else:
+			conv_path = save_path
+		converted.append(conv_path)
 
-			file_arr.append(output_path)
+	# Choose base using priority (lowest number = highest priority)
+	converted = sorted(converted, key=lambda p: PRIORITY.get(os.path.splitext(p)[1].lower().lstrip("."), 5))
+	base = converted[0]
+	extras = [(p, os.path.splitext(p)[1].lower().lstrip(".")) for p in converted[1:]]
 
-	# Merge all files into a single polyglot file
-	file_arr = sorted(file_arr, key=lambda f: priority.get(detect_type(f.split('.')[-1].lower()), 5))
-	base_file = None
-	for file in file_arr:
-		if detect_type(file.split('.')[-1].lower()) in ["audio", "video", "document"]:
-			base_file = file
-			break
+	outname = f"{uuid.uuid4().hex}_merged.polyglot"
+	outpath = os.path.join(CONVERTED_FOLDER, outname)
 
-	if not base_file:
-		return jsonify({"error": "No suitable base file (audio/video/document)"}), 400
+	base_ext = os.path.splitext(base)[1].lower().lstrip(".")
 
-	# Create a polyglot file by appending files
-	merged_path = os.path.join(CONVERTED_FOLDER, f"{uuid.uuid4().hex}_merged.polyglot")
+	# Use strategy depending on base_ext
+	if base_ext == "mp4":
+		ok, msg = merge_with_mp4_base(base, extras, outpath)
+	elif base_ext == "ico":
+		ok, msg = merge_with_png_base(base, extras, outpath)
+	elif base_ext == "pdf":
+		ok, msg = merge_with_pdf_base(base, extras, outpath)
+	else:
+		# Fallback: append raw bytes with byte concatenation and try to verify via magic scanning
+		with open(base, "rb") as bf:
+			out_bytes = bf.read()
+		for p, ext in extras:
+			with open(p, "rb") as ef:
+				out_bytes += ef.read()
+		with open(outpath, "wb") as out:
+			out.write(out_bytes)
+		ok = True
+		msg = "Appended raw bytes (fallback)."
 
-	# Merge the files properly (use byte concatenation with open in binary mode)
-	with open(merged_path, 'wb') as merged_file:
-		with open(base_file, 'rb') as base_f:
-			merged_file.write(base_f.read())
+	if not ok:
+		return jsonify({"error": "merge failed", "detail": msg}), 500
 
-		for file in file_arr:
-			if file != base_file:
-				with open(file, 'rb') as f:
-					merged_file.write(f.read())
-	return send_file(merged_path, as_attachment=True, download_name=f"{output_filename}.polyglot")
+	# Final quick scan: try to identify embedded files and report which were found
+	with open(outpath, "rb") as m:
+		blob = m.read()
+
+	found = {}
+	for p, ext in extras:
+		ext = ext.lower()
+		if ext == "pdf":
+			found["pdf"] = extract_pdf_bytes(blob) is not None
+		elif ext == "ico":
+			found["png"] = extract_png_bytes(blob) is not None
+		elif ext == "zip":
+			found["zip"] = blob.find(b"PK\x03\x04") != -1
+		else:
+			found[ext] = True
+
+	return send_file(outpath, as_attachment=True, download_name=outname)
 
 def detect_type(ext):
 	"""
