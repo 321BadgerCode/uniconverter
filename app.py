@@ -634,7 +634,7 @@ def merge():
 		converted.append(conv_path)
 
 	# Choose base using priority (lowest number = highest priority)
-	converted = sorted(converted, key=lambda p: PRIORITY.get(os.path.splitext(p)[1].lower().lstrip("."), 5))
+	converted = sorted(converted, key=lambda p: PRIORITY.get(detect_type(os.path.splitext(p)[1].lower().lstrip(".")), 5))
 	base = converted[0]
 	extras = [(p, os.path.splitext(p)[1].lower().lstrip(".")) for p in converted[1:]]
 
