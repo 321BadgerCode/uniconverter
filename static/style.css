@@ -104,11 +104,9 @@ h1 {
 	background-color: var(--bg-light);
 	color: var(--text-dark);
 }
-
 .drop-zone strong {
 	color: var(--text-light);
 }
-
 .drop-zone.active, .drop-zone:hover {
 	background-color: #4b5563;
 	border-color: var(--primary-color);
@@ -118,7 +116,6 @@ h1 {
 	margin-top: 1.5rem;
 	text-align: left;
 }
-
 .file-item {
 	display: flex;
 	align-items: center;
@@ -129,12 +126,10 @@ h1 {
 	margin-bottom: 1rem;
 	background-color: var(--bg-light);
 }
-
 .file-preview {
 	flex-grow: 1;
 	position: relative;
 }
-
 .file-type-badge {
 	position: absolute;
 	top: 8px;
@@ -147,7 +142,6 @@ h1 {
 	text-transform: uppercase;
 	z-index: 1;
 }
-
 .file-preview img, .file-preview video, .file-preview iframe, .file-preview pre {
 	max-width: 150px;
 	max-height: 100px;
@@ -155,7 +149,6 @@ h1 {
 	display: block;
 	background-color: #fff;
 }
-
 .file-preview pre {
 	color: #000;
 	padding: 0.5rem;
@@ -163,11 +156,25 @@ h1 {
 	word-break: break-all;
 	overflow: hidden;
 }
-
 .file-info {
 	margin-top: 0.5rem;
 	font-size: 0.8rem;
 	color: var(--text-dark);
+}
+.info-image {
+	width: 1.5rem;
+	height: 1.5rem;
+	cursor: pointer;
+	transition: transform 0.2s ease;
+	position: absolute;
+	top: -10px;
+	right: -100px;
+}
+.info-image:hover {
+	transform: scale(1.1);
+}
+.info-image:active {
+	transform: scale(0.9);
 }
 
 .controls-area {
@@ -184,7 +191,6 @@ select, button:not(#clearAllBtn):not(.remove-btn):not(#convertBtn):not(#mergeBtn
 	color: var(--text-light);
 	border: 1px solid var(--border-color);
 }
-
 select, button {
 	font-family: inherit;
 	font-size: 1rem;
@@ -193,7 +199,6 @@ select, button {
 	cursor: pointer;
 	transition: all 0.2s ease;
 }
-
 button:disabled, select:disabled {
 	cursor: not-allowed;
 	opacity: 0.5;
@@ -204,7 +209,6 @@ button:disabled, select:disabled {
 	color: #fff;
 	border-color: var(--success-color);
 }
-
 #convertBtn.active:hover {
 	background-color: var(--success-hover-color);
 }
@@ -214,7 +218,6 @@ button:disabled, select:disabled {
 	color: #fff;
 	border: 1px solid var(--primary-color);
 }
-
 #mergeBtn.active:hover {
 	background-color: #4338ca;
 }
@@ -224,11 +227,9 @@ button:disabled, select:disabled {
 	color: #fff;
 	border: 1px solid var(--danger-color);
 }
-
 #clearAllBtn:hover, .remove-btn:hover {
 	background-color: var(--danger-hover-color);
 }
-
 .remove-btn {
 	border: none;
 	padding: 0.5rem 0.8rem;

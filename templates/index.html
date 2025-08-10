@@ -105,6 +105,7 @@
 			// Turn on merge button if conditions are met
 			// Needs 1 of the following formats: video, audio, document
 			// Needs at least 1 of the following (different from base): image, video, audio, document, archive
+			// FIXME: With current merging backend, PDF cannot be a base format because the storage size gets limited to 82 bytes
 			if (fileTypes.length > 1 && uniqueTypes.length === fileTypes.length && (fileTypes.includes("video") || fileTypes.includes("audio") || fileTypes.includes("document")) && fileTypes.some(type => ["image", "document", "archive"].includes(type))) {
 				mergeBtn.style.display = "inline-block";
 				mergeBtn.disabled = false;
@@ -385,6 +386,77 @@
 		}
 
 		/**
+		 * @brief Displays overlay that covers the webpage.
+		 * @param {string} message - The message to be displayed on the overlay.
+		 * @return {void}
+		 */
+		function showOverlay(message) {
+			// Overlay will be a box that covers the entire page and the user cannot interact with the page until the overlay is closed
+			const overlay = document.createElement("div");
+			overlay.className = "overlay";
+			overlay.innerHTML = `
+				<div class="overlay-content">
+					<button class="close-btn" onclick="document.body.removeChild(this.parentElement.parentElement)">✖</button>${message}</div>
+			`;
+			document.body.appendChild(overlay);
+			// Add click event to close the overlay when clicking outside the content area
+			overlay.addEventListener("click", (e) => {
+				if (e.target === overlay) {
+					document.body.removeChild(overlay);
+				}
+			});
+			// Add styles to the overlay
+			overlay.style.position = "fixed";
+			overlay.style.top = "0";
+			overlay.style.left = "0";
+			overlay.style.width = "100%";
+			overlay.style.height = "100%";
+			overlay.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+			overlay.style.zIndex = "1000";
+			overlay.style.display = "flex";
+			overlay.style.justifyContent = "center";
+			overlay.style.alignItems = "center";
+			overlay.style.color = "#fff";
+			overlay.style.fontSize = "1.2em";
+			overlay.style.padding = "20px";
+			overlay.style.boxSizing = "border-box";
+			overlay.style.overflowY = "auto";
+			overlay.querySelector(".overlay-content").style.backgroundColor = "#1e1e1e";
+			overlay.querySelector(".overlay-content").style.padding = "20px";
+			overlay.querySelector(".overlay-content").style.borderRadius = "8px";
+			overlay.querySelector(".overlay-content").style.maxWidth = "600px";
+			overlay.querySelector(".overlay-content").style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+			overlay.querySelector(".overlay-content").style.textAlign = "center";
+			overlay.querySelector(".close-btn").style.position = "absolute";
+			overlay.querySelector(".close-btn").style.top = "10px";
+			overlay.querySelector(".close-btn").style.right = "10px";
+			overlay.querySelector(".close-btn").style.backgroundColor = "transparent";
+			overlay.querySelector(".close-btn").style.border = "none";
+			overlay.querySelector(".close-btn").style.color = "#fff";
+			overlay.querySelector(".close-btn").style.fontSize = "1.5em";
+			overlay.querySelector(".close-btn").style.cursor = "pointer";
+			overlay.querySelector(".close-btn").style.padding = "0";
+			overlay.querySelector(".close-btn").style.zIndex = "1001"; // Ensure the close button is above the overlay
+			overlay.querySelector(".close-btn").style.transition = "color 0.3s";
+			overlay.querySelector(".close-btn").addEventListener("mouseover", function() {
+				this.style.color = "#ff4081"; // Change color on hover
+			});
+			overlay.querySelector(".close-btn").addEventListener("mouseout", function() {
+				this.style.color = "#fff"; // Reset color on mouse out
+			});
+			// Add a scrollbar to the overlay content if it overflows
+			overlay.querySelector(".overlay-content").style.maxHeight = "80vh";
+			overlay.querySelector(".overlay-content").style.overflowY = "auto";
+			// Add a transition effect for the overlay
+			overlay.style.transition = "opacity 0.3s ease-in-out";
+			// Set initial opacity to 0 and fade in
+			overlay.style.opacity = "0";
+			setTimeout(() => {
+				overlay.style.opacity = "1";
+			}, 10); // Delay to allow the styles to apply before fading in
+		}
+
+		/**
 		 * @brief Uploads the selected file to the server and updates the UI.
 		 * @param {File} file - The file to be uploaded.
 		 * @return {Promise<void>} A promise that resolves when the upload is complete.
@@ -405,14 +477,51 @@
 				convertBtn.classList.remove("active");
 			}
 
-			// Display file preview and info
+			// Display file preview
 			const fileId = file.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.size;
 			const preview = document.getElementById(fileId).querySelector(".file-preview");
 			await showPreview(file, preview);
+			// Display file info
 			const fileInfo = document.createElement("div");
 			fileInfo.className = "file-info";
 			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
 			preview.appendChild(fileInfo);
+			// Add info image with click event to show file details
+			const infoImage = document.createElement("img");
+			infoImage.src = "{{ url_for('static', filename='info.svg') }}";
+			infoImage.alt = "Info";
+			infoImage.className = "info-image";
+			infoImage.style.background = "transparent";
+			infoImage.addEventListener("click", () => {
+				// Fetch metadata from the server
+				fetch("/metadata", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ filepath: file.name })
+				})
+				.then(res => res.json())
+				.then(metadata => {
+					if (metadata.error) {
+						showNotification(`Error fetching metadata: ${metadata.error}`);
+					} else {
+						showOverlay(`
+							<h2>File Information</h2>
+							<p><strong>Name:</strong> ${file.name}</p>
+							<p><strong>Size:</strong> ${formatFileSize(file.size)}</p>
+							<p><strong>Type:</strong> ${file.type || "Unknown"}</p>
+							<p><strong>Last Modified:</strong> ${new Date(file.lastModified).toLocaleString()}</p>
+							<p><strong>Metadata:</strong></p>
+							<pre>${JSON.stringify(metadata, null, 2).substring(1, JSON.stringify(metadata, null, 2).length - 1)}</pre>
+						`);
+					}
+				})
+				.catch(err => {
+					showNotification(`Error fetching metadata: ${err.message}`);
+				});
+			});
+			preview.appendChild(infoImage);
 		}
 
 		/**

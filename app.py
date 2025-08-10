@@ -4,6 +4,7 @@ import subprocess
 import uuid
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
+import json
 import zipfile
 import tarfile
 import tempfile
@@ -682,6 +683,37 @@ def merge():
 			found[ext] = True
 
 	return send_file(outpath, as_attachment=True, download_name=outname)
+
+@app.route("/metadata", methods=["POST"])
+def get_metadata():
+	"""
+	Get metadata for a file using ExifTool.
+	Args:
+		filepath (str): Path to the file for which metadata is requested.
+	"""
+	data = request.get_json()
+	if not data or "filepath" not in data:
+		return jsonify({"error": "Missing \"filepath\" in JSON"}), 400
+
+	filepath = os.path.join(UPLOAD_FOLDER, secure_filename(data["filepath"]))
+	if not os.path.exists(filepath):
+		return jsonify({"error": "File does not exist"}), 404
+
+	try:
+		# Run exiftool with JSON output
+		result = subprocess.run(
+			["exiftool", "-j", filepath],
+			capture_output=True,
+			text=True,
+			check=True
+		)
+		metadata = json.loads(result.stdout)[0]
+		return jsonify(metadata)
+
+	except subprocess.CalledProcessError as e:
+		return jsonify({"error": "Exiftool command failed", "details": e.stderr}), 500
+	except (json.JSONDecodeError, IndexError):
+		return jsonify({"error": "Failed to parse exiftool output"}), 500
 
 def detect_type(ext):
 	"""
