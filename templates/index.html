@@ -50,18 +50,7 @@
 		const convertBtn = document.getElementById("convertBtn");
 		const mergeBtn = document.getElementById("mergeBtn");
 
-		let files = [];
-		let currentType = null;
-
-		let COMPATIBLE_MATRIX = {
-			image: ["image"],
-			video: ["image", "audio", "video"],
-			audio: ["audio", "video"],
-			document: ["image", "document"],
-			archive: ["archive"]
-		};
-
-		// Define supported formats
+		// Define file format options
 		const formatOptions = {
 			image: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "tga", "tif", "tiff", "ppm", "xbm", "icns"],
 			audio: ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "alac", "amr", "mka"],
@@ -71,6 +60,17 @@
 			presentation: ["ppt", "pptx", "odp", "keynote"],
 			archive: ["zip", "rar", "tar", "gz", "7z", "bz2", "xz"]
 		};
+
+		let COMPATIBLE_MATRIX = {
+			image: ["image"],
+			video: ["image", "audio", "video"],
+			audio: ["audio", "video"],
+			document: ["image", "document"],
+			archive: ["archive"]
+		};
+
+		let files = [];
+		let currentType = null;
 
 		/**
 		 * @brief Displays a notification message.

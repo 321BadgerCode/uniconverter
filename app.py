@@ -1,15 +1,15 @@
 import os
 import sys
-import subprocess
 import uuid
-from flask import Flask, render_template, request, send_file, jsonify
-from werkzeug.utils import secure_filename
 import json
+import struct
 import zipfile
 import tarfile
 import tempfile
-import struct
 import binascii
+import subprocess
+from flask import Flask, render_template, request, send_file, jsonify
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
@@ -201,9 +201,9 @@ def convert_one(file):
 
 				allowed_sizes = [32, 64, 128]
 
+				# Determine the target size based on the original image size
 				max_dim = img.width
 				target_size = max([s for s in allowed_sizes if s <= max_dim], default=min(allowed_sizes))
-
 				img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
 
 				# Save the image as ICO
@@ -376,7 +376,7 @@ PRIORITY = {
 
 PNG_SIG = b"\x89PNG\r\n\x1a\n"
 
-def make_png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+def make_png_chunk(chunk_type, data):
 	"""
 	Create PNG chunk bytes: length(4) + type(4) + data + crc(4).
 	Args:
@@ -388,7 +388,7 @@ def make_png_chunk(chunk_type: bytes, data: bytes) -> bytes:
 	crc = struct.pack(">I", binascii.crc32(chunk_type + data) & 0xffffffff)
 	return length + chunk_type + data + crc
 
-def insert_chunk_before_iend(png_bytes: bytes, chunk_type: bytes, chunk_data: bytes) -> bytes:
+def insert_chunk_before_iend(png_bytes, chunk_type, chunk_data):
 	"""
 	Insert a chunk (type,data) immediately before the IEND chunk.
 	Args:
@@ -409,7 +409,7 @@ def insert_chunk_before_iend(png_bytes: bytes, chunk_type: bytes, chunk_data: by
 	chunk = make_png_chunk(chunk_type, chunk_data)
 	return png_bytes[:idx] + chunk + png_bytes[idx:]
 
-def find_png_inside_ico(ico_bytes: bytes) -> int:
+def find_png_inside_ico(ico_bytes):
 	"""
 	Return index of PNG signature inside ICO (or -1).
 	Args:
@@ -417,7 +417,7 @@ def find_png_inside_ico(ico_bytes: bytes) -> int:
 	"""
 	return ico_bytes.find(PNG_SIG)
 
-def append_mp4_box_bytes(base_bytes: bytes, box_type: bytes, payload: bytes, usertype: bytes = None) -> bytes:
+def append_mp4_box_bytes(base_bytes, box_type, payload, usertype = None):
 	"""
 	Append a valid top-level MP4 box with given box_type (4 bytes).
 	If box_type == b'uuid' you must provide a 16-byte usertype (usertype).
@@ -438,7 +438,7 @@ def append_mp4_box_bytes(base_bytes: bytes, box_type: bytes, payload: bytes, use
 		total_size = header_size + len(payload)
 		return base_bytes + struct.pack(">I", total_size) + box_type + payload
 
-def verify_mp4(path: str) -> bool:
+def verify_mp4(path):
 	"""
 	Use ffprobe to quickly check basic mp4 readability.
 	Args:
@@ -451,7 +451,7 @@ def verify_mp4(path: str) -> bool:
 	except Exception:
 		return False
 
-def extract_pdf_bytes(blob: bytes):
+def extract_pdf_bytes(blob):
 	"""
 	Find a %PDF- ... %%EOF region inside blob and return bytes or None.
 	Args:
@@ -472,7 +472,12 @@ def extract_pdf_bytes(blob: bytes):
 		end = idx + len(b"%%EOF")
 	return blob[start:end]
 
-def extract_png_bytes(blob: bytes):
+def extract_png_bytes(blob):
+	"""
+	Find a PNG ... IEND region inside blob and return bytes or None.
+	Args:
+		blob (bytes): The binary data to search for PNG content.
+	"""
 	start = blob.find(PNG_SIG)
 	if start == -1:
 		return None
@@ -486,14 +491,13 @@ def extract_png_bytes(blob: bytes):
 	# Safer: find the CRC 4 bytes after the IEND sequence
 	return blob[start:end]
 
-def merge_with_mp4_base(base_path: str, extras: list, merged_path: str):
+def merge_with_mp4_base(base_path, extras, merged_path):
 	"""
 	Merge extras into an MP4 base file by appending them as 'uuid' boxes.
 	Args:
 		base_path (str): MP4 path.
 		extras (list): List of tuples (filename_on_disk, mime_type/extension).
 		strategy (str): Append each extra as a uuid box (so mp4 players ignore it).
-		After building merged file we verify with ffprobe (for mp4) and try to find magic for each extra.
 	"""
 	with open(base_path, "rb") as f:
 		base_bytes = f.read()
@@ -513,12 +517,9 @@ def merge_with_mp4_base(base_path: str, extras: list, merged_path: str):
 
 	return True, "OK"
 
-def merge_with_png_base(base_path: str, extras: list, merged_path: str):
+def merge_with_png_base(base_path, extras, merged_path):
 	"""
 	Merge extras into a PNG base file by inserting them as ancillary chunks.
-	Insert extras into PNG base as an ancillary chunk before IEND.
-	For ICO base we need to find PNG inside ICO and inject there.
-	This keeps the PNG valid; extras are findable by scanning for their magic.
 	Args:
 		base_path (str): PNG path.
 		extras (list): List of tuples (filename_on_disk, mime_type/extension).
@@ -546,12 +547,9 @@ def merge_with_png_base(base_path: str, extras: list, merged_path: str):
 			return True, "OK"
 		return False, "PNG injection failed"
 
-def merge_with_pdf_base(base_path: str, extras: list, merged_path: str):
+def merge_with_pdf_base(base_path, extras, merged_path):
 	"""
 	Merge extras into a PDF base file by embedding them as attachments.
-	Use pypdf to attach files into the PDF as real attachments (embedded files).
-	This keeps PDF valid and attachments extractable, but note: attachment extraction is via PDF UI,
-	not by opening the merged file as the other file type directly.
 	Args:
 		base_path (str): PDF path.
 		extras (list): List of tuples (filename_on_disk, mime_type/extension).
@@ -578,8 +576,6 @@ def merge_with_pdf_base(base_path: str, extras: list, merged_path: str):
 def merge():
 	"""
 	Merge multiple files into a single file based on their types.
-	Files are converted to a common format if necessary.
-	Returns the merged file as a download.
 	"""
 	files = request.files.getlist("files")
 	if not files or len(files) < 2:
@@ -664,7 +660,6 @@ def get_metadata():
 		return jsonify({"error": "File does not exist"}), 404
 
 	try:
-		# Run exiftool with JSON output
 		result = subprocess.run(
 			["exiftool", "-j", filepath],
 			capture_output=True,
