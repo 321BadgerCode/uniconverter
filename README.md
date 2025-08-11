@@ -1,5 +1,5 @@
 <p align="center">
-	<img src="./asset/logo.svg" alt="Uniconverter logo" width="200" height="200"/>
+	<img src="./asset/logo.png" alt="Uniconverter logo" width="128" height="160"/>
 </p>
 
 <h1 align="center">Uniconverter</h1>
@@ -21,20 +21,20 @@ Welcome to **Uniconverter**! This program allows you to convert files of one typ
 
 ## 🎨 Features
 
-- **Dark Theme**: The program features a sleek dark theme that is easy on the eyes and provides a modern look.
-- **Drag and Drop**: Users can easily drag and drop files into the program for conversion, making the process quick and intuitive.
-- **File Preview**: The program allows users to preview the files they want to convert, ensuring they select the correct files before conversion.
-- **Folder Support**: Users can upload entire folders of files, making it convenient for batch conversions.
-- **Multimodality Compatibility**: The program can convert files to different formats, such as video to audio.
-- **No Conversion Limit**: There are no caps on the number or size of files you can convert.
-- **Docker Compatibility**: The program can be run in a Docker container, making it easy to deploy and use on any system.
-- **PWA Support**: The program can be installed as a Progressive Web App (PWA), allowing users to run it like a native application on their devices.
+- 🌑 **Dark Theme**: The program features a sleek dark theme that is easy on the eyes and provides a modern look.
+- 🖱️ **Drag and Drop**: Users can easily drag and drop files into the program for conversion, making the process quick and intuitive.
+- 📁 **File Preview**: The program allows users to preview the files they want to convert, ensuring they select the correct files before conversion.
+- 🗃️ **Folder Support**: Users can upload entire folders of files, making it convenient for batch conversions.
+- 🔢 **Multimodality Compatibility**: The program can convert files to different formats, such as video to audio.
+- ♾️ **No Conversion Limit**: There are no caps on the number or size of files you can convert.
+- 👍 **Docker Compatibility**: The program can be run in a Docker container, making it easy to deploy and use on any system.
+- 🫂 **PWA Support**: The program can be installed as a Progressive Web App (PWA), allowing users to run it like a native application on their devices.
+- 🧩 **Polyglot Merging**: The program can merge files of different formats into a single output file (that's not an archive).
+- ℹ️ **Metadata Extraction**: The program can extract metadata from files, providing users with additional information about their files.
 
 ## 🛠️ Installation
 
-To get started with the program, follow the steps below:
-
-**Clone the Repository**
+**Clone the repository**
 ```sh
 git clone https://github.com/321BadgerCode/uniconverter.git
 cd ./uniconverter/
@@ -45,6 +45,7 @@ cd ./uniconverter/
 <summary>📦 Dependencies</summary>
 
 - **FFMpeg**: The program requires FFmpeg to be installed on your system. You can download it from the [FFmpeg website](https://www.ffmpeg.org/download.html).
+- **Exiftool**: The program uses Exiftool for metadata extraction. You can download it from the [Exiftool website](https://exiftool.org/).
 - **Python Packages**: The program uses several Python packages. You can install them using pip:
 ```sh
 pip install -r requirements.txt
