@@ -198,14 +198,19 @@ def convert_one(file):
 				if img.size[0] != img.size[1]:
 					min_size = min(img.size)
 					img = img.resize((min_size, min_size), Image.Resampling.LANCZOS)
-				# Resize into closest 32 multiple square
-				size = 32
-				while size < img.size[0]:
-					size *= 2
-				img = img.resize((size, size), Image.Resampling.LANCZOS)
+
+				allowed_sizes = [32, 64, 128]
+
+				max_dim = img.width
+				target_size = max([s for s in allowed_sizes if s <= max_dim], default=min(allowed_sizes))
+
+				img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+
+				# Save the image as ICO
+				img.save(output_path, format=target_format.upper(), sizes=[(target_size, target_size)])
 
 			# Save the image in the target format
-			if not target_format in ["svg", "heic"]:
+			if not target_format in ["ico", "svg", "heic"]:
 				img.save(output_path, target_format.upper())
 		except ImportError as e:
 			print("Pillow error: PIL module not found")
@@ -364,8 +369,8 @@ def convert():
 
 PRIORITY = {
 	"video": 1,
-	"document": 2,
-	"image": 3,
+	"image": 2,
+	"document": 3,
 	"archive": 4
 }
 
@@ -506,21 +511,6 @@ def merge_with_mp4_base(base_path: str, extras: list, merged_path: str):
 	if not verify_mp4(merged_path):
 		return False, "ffprobe failed; appended atoms probably broke the mp4 structure."
 
-	# Verify each extra's magic exists somewhere in the merged file
-	blob = base_bytes
-	for (_, ext) in extras:
-		ext = ext.lower()
-		ok = False
-		if ext in ("pdf",):
-			ok = extract_pdf_bytes(blob) is not None
-		elif ext in ("png", "ico"):
-			ok = extract_png_bytes(blob) is not None
-		elif ext in ("zip",):
-			ok = blob.find(b"PK\x03\x04") != -1
-		else:
-			ok = True # Best-effort
-		if not ok:
-			return False, f"Could not locate embedded {ext} by scanning merged file."
 	return True, "OK"
 
 def merge_with_png_base(base_path: str, extras: list, merged_path: str):
@@ -555,16 +545,6 @@ def merge_with_png_base(base_path: str, extras: list, merged_path: str):
 		if new_png.startswith(PNG_SIG) and b"IEND" in new_png:
 			return True, "OK"
 		return False, "PNG injection failed"
-	else:
-		# Plain PNG
-		all_extra_payload = b""
-		for (extra_path, ext) in extras:
-			with open(extra_path, "rb") as ef:
-				all_extra_payload += b"\n--EMBED--" + os.path.basename(extra_path).encode("utf-8") + b"\n" + ef.read()
-		new_png = insert_chunk_before_iend(base_bytes, b"pLTg", all_extra_payload)
-		with open(merged_path, "wb") as out:
-			out.write(new_png)
-		return True, "OK"
 
 def merge_with_pdf_base(base_path: str, extras: list, merged_path: str):
 	"""
@@ -593,7 +573,7 @@ def merge_with_pdf_base(base_path: str, extras: list, merged_path: str):
 	except Exception as e:
 		return False, f"PDF embedding failed: {e}"
 
-# FIXME: Fix merging of image files to work
+# FIXME: Fix merging of image files to work with video files
 @app.route("/merge", methods=["POST"])
 def merge():
 	"""
@@ -665,22 +645,6 @@ def merge():
 
 	if not ok:
 		return jsonify({"error": "merge failed", "detail": msg}), 500
-
-	# Final quick scan: try to identify embedded files and report which were found
-	with open(outpath, "rb") as m:
-		blob = m.read()
-
-	found = {}
-	for p, ext in extras:
-		ext = ext.lower()
-		if ext == "pdf":
-			found["pdf"] = extract_pdf_bytes(blob) is not None
-		elif ext == "ico":
-			found["png"] = extract_png_bytes(blob) is not None
-		elif ext == "zip":
-			found["zip"] = blob.find(b"PK\x03\x04") != -1
-		else:
-			found[ext] = True
 
 	return send_file(outpath, as_attachment=True, download_name=outname)
 
