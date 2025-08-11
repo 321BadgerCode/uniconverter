@@ -8,12 +8,12 @@
 	<strong>Your files, your format!</strong>
 </p>
 
-<center>
+<div style="display: flex;" align="center">
 	<img style="vertical-align: middle;" src="./asset/logos/html.svg" alt="HTML logo" width="40"/>
 	<img style="vertical-align: middle;" src="./asset/logos/javascript.svg" alt="Python logo" width="40"/>
 	<img style="vertical-align: middle;" src="./asset/logos/python.svg" alt="JavaScript logo" width="40"/>
 	<img style="vertical-align: middle;" src="./asset/logos/docker.svg" alt="Docker logo" width="40"/>
-</center>
+</div>
 
 ## 🚀 Overview
 
