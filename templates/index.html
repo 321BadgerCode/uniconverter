@@ -105,7 +105,6 @@
 			// Turn on merge button if conditions are met
 			// Needs 1 of the following formats: video, audio, document
 			// Needs at least 1 of the following (different from base): image, video, audio, document, archive
-			// FIXME: With current merging backend, PDF cannot be a base format because the storage size gets limited to 82 bytes
 			if (fileTypes.length > 1 && uniqueTypes.length === fileTypes.length && (fileTypes.includes("video") || fileTypes.includes("audio") || fileTypes.includes("document")) && fileTypes.some(type => ["image", "document", "archive"].includes(type))) {
 				mergeBtn.style.display = "inline-block";
 				mergeBtn.disabled = false;
