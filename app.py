@@ -1,10 +1,15 @@
 import os
 import sys
-import subprocess
 import uuid
+import json
+import struct
+import zipfile
+import tarfile
+import tempfile
+import binascii
+import subprocess
 from flask import Flask, render_template, request, send_file, jsonify
 from werkzeug.utils import secure_filename
-import zipfile
 
 app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
@@ -15,6 +20,7 @@ image_exts = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "
 audio_exts = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "alac", "amr", "mka"]
 video_exts = ["mp4", "mov", "avi", "webm", "mkv", "flv", "wmv", "mpeg", "mpg", "3gp", "m4v", "ts"]
 doc_exts = ["pdf", "txt"]
+archive_exts = ["zip", "rar", "tar", "gz", "7z", "bz2", "xz"]
 
 # Declare command line argument variable
 is_backup_enabled = False
@@ -105,6 +111,34 @@ def image_to_colored_svg_kmeans(image_path, output_svg, num_colors=8, min_region
 
 	dwg.save()
 
+def zip_to_tar(zip_path, tar_path):
+	"""
+	Convert a zip archive to a tar.gz archive.
+	Args:
+		zip_path (str): Path to the input zip file.
+		tar_path (str): Path to save the output tar.gz file.
+	"""
+	with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+		with tempfile.TemporaryDirectory() as temp_dir:
+			zip_ref.extractall(temp_dir)
+
+			with tarfile.open(tar_path, 'w:gz') as tar:
+				tar.add(temp_dir, arcname='.')
+
+def sevenz_to_zip(sevenz_path, zip_path):
+	import py7zr
+	"""
+	Convert a 7z archive to a zip archive.
+	Args:
+		sevenz_path (str): Path to the input 7z file.
+		zip_path (str): Path to save the output zip file.
+	"""
+	with py7zr.SevenZipFile(sevenz_path, mode='r') as archive:
+		with zipfile.ZipFile(zip_path, 'w') as zipf:
+			for file in archive.getnames():
+				data = archive.read(file)
+				zipf.writestr(file, data)
+
 def convert_one(file):
 	"""
 	Convert a single file.
@@ -118,6 +152,10 @@ def convert_one(file):
 	base = uuid.uuid4().hex
 	output_filename = f"{base}.{target_format}"
 	output_path = os.path.join(CONVERTED_FOLDER, output_filename)
+
+	# If asking to convert to the same format, just return the original file
+	if ext == target_format:
+		return {"filename": filename, "type": detect_type(ext)}
 
 	if ext in image_exts and target_format in image_exts:
 		try:
@@ -160,14 +198,19 @@ def convert_one(file):
 				if img.size[0] != img.size[1]:
 					min_size = min(img.size)
 					img = img.resize((min_size, min_size), Image.Resampling.LANCZOS)
-				# Resize into closest 32 multiple square
-				size = 32
-				while size < img.size[0]:
-					size *= 2
-				img = img.resize((size, size), Image.Resampling.LANCZOS)
+
+				allowed_sizes = [32, 64, 128]
+
+				# Determine the target size based on the original image size
+				max_dim = img.width
+				target_size = max([s for s in allowed_sizes if s <= max_dim], default=min(allowed_sizes))
+				img = img.resize((target_size, target_size), Image.Resampling.LANCZOS)
+
+				# Save the image as ICO
+				img.save(output_path, format=target_format.upper(), sizes=[(target_size, target_size)])
 
 			# Save the image in the target format
-			if not target_format in ["svg", "heic"]:
+			if not target_format in ["ico", "svg", "heic"]:
 				img.save(output_path, target_format.upper())
 		except ImportError as e:
 			print("Pillow error: PIL module not found")
@@ -182,6 +225,15 @@ def convert_one(file):
 			print("FFmpeg error:", out.stderr)
 			return jsonify({"error": "Audio conversion failed."}), 500
 
+	elif ext in audio_exts and target_format in video_exts:
+		args = ["ffmpeg", "-y", "-i", input_path, "-c:a", "aac", output_path]
+
+		try:
+			subprocess.run(args, check=True)
+		except subprocess.CalledProcessError as e:
+			print("FFmpeg error:", e)
+			return jsonify({"error": "Audio to video conversion failed."}), 500
+
 	elif ext in video_exts and target_format in video_exts:
 		args = ["ffmpeg", "-y", "-i", input_path, output_path]
 
@@ -190,6 +242,15 @@ def convert_one(file):
 		except subprocess.CalledProcessError as e:
 			print("FFmpeg error:", e)
 			return jsonify({"error": "Video conversion failed."}), 500
+
+	elif ext in video_exts and target_format in image_exts:
+		args = ["ffmpeg", "-y", "-i", input_path, "-frames:v", "1", output_path]
+
+		try:
+			subprocess.run(args, check=True)
+		except subprocess.CalledProcessError as e:
+			print("FFmpeg error:", e)
+			return jsonify({"error": "Video to image conversion failed."}), 500
 
 	elif ext in doc_exts and target_format in doc_exts:
 		if ext == "pdf" and target_format == "txt":
@@ -249,13 +310,30 @@ def convert_one(file):
 			print("Error details:", e)
 			return jsonify({"error": "pdf2image is required for PDF to image conversion."}), 500
 
+	elif ext in archive_exts and target_format in archive_exts:
+		if ext == "zip" and target_format == "gz":
+			zip_to_tar(input_path, output_path)
+		elif ext == "7z" and target_format == "zip":
+			sevenz_to_zip(input_path, output_path)
+		elif ext == "gz" and target_format == "zip":
+			with tarfile.open(input_path, 'r') as tar:
+				with zipfile.ZipFile(output_path, 'w') as zipf:
+					for member in tar.getmembers():
+						if member.isfile():
+							file_data = tar.extractfile(member).read()
+							zipf.writestr(member.name, file_data)
+		elif ext == "gz" and target_format == "zip":
+			with open(input_path, "rb") as gz_file:
+				with zipfile.ZipFile(output_path, 'w') as zipf:
+					zipf.writestr(os.path.basename(input_path), gz_file.read())
+		else:
+			return {"error": "Unsupported archive conversion"}
+
 	else:
 		return {"error": "Unsupported conversion"}
-	
+
 	return output_filename
 
-# TODO: use BytesIO and give data to convert_one, then once converted, delete file in UPLOAD_FOLDER. on last file, remove the UPLOAD_FOLDER
-	# no cleanup
 @app.route("/convert", methods=["POST"])
 def convert():
 	"""
@@ -289,6 +367,313 @@ def convert():
 	else:
 		return send_file(os.path.join(CONVERTED_FOLDER, converted_files[0]), as_attachment=True)
 
+PRIORITY = {
+	"video": 1,
+	"image": 2,
+	"document": 3,
+	"archive": 4
+}
+
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
+
+def make_png_chunk(chunk_type, data):
+	"""
+	Create PNG chunk bytes: length(4) + type(4) + data + crc(4).
+	Args:
+		chunk_type (bytes): 4-byte chunk type (e.g., b'tEXt').
+		data (bytes): Chunk data.
+	"""
+	assert len(chunk_type) == 4
+	length = struct.pack(">I", len(data))
+	crc = struct.pack(">I", binascii.crc32(chunk_type + data) & 0xffffffff)
+	return length + chunk_type + data + crc
+
+def insert_chunk_before_iend(png_bytes, chunk_type, chunk_data):
+	"""
+	Insert a chunk (type,data) immediately before the IEND chunk.
+	Args:
+		png_bytes (bytes): Original PNG bytes.
+		chunk_type (bytes): 4-byte chunk type (e.g., b'tEXt').
+		chunk_data (bytes): Chunk data to insert.
+	"""
+	# Look for the IEND chunk start: \x00\x00\x00\x00IEND
+	marker = b"\x00\x00\x00\x00IEND"
+	idx = png_bytes.rfind(marker)
+	if idx == -1:
+		# Fallback: look for "IEND" anywhere
+		idx = png_bytes.rfind(b"IEND")
+		if idx == -1:
+			raise ValueError("IEND not found in PNG")
+		# Find the 4 bytes length before it if possible
+		idx = idx - 4
+	chunk = make_png_chunk(chunk_type, chunk_data)
+	return png_bytes[:idx] + chunk + png_bytes[idx:]
+
+def find_png_inside_ico(ico_bytes):
+	"""
+	Return index of PNG signature inside ICO (or -1).
+	Args:
+		ico_bytes (bytes): ICO file bytes.
+	"""
+	return ico_bytes.find(PNG_SIG)
+
+def append_mp4_box_bytes(base_bytes, box_type, payload, usertype = None):
+	"""
+	Append a valid top-level MP4 box with given box_type (4 bytes).
+	If box_type == b'uuid' you must provide a 16-byte usertype (usertype).
+	Args:
+		base_bytes (bytes): Original MP4 bytes.
+		box_type (bytes): 4-byte box type (e.g., b'uuid').
+		payload (bytes): Payload data to append.
+		usertype (bytes, optional): 16-byte usertype for 'uuid' box type. Defaults to None.
+	"""
+	if box_type == b'uuid':
+		if usertype is None:
+			usertype = uuid.uuid4().bytes # 16 bytes
+		header_size = 8 + 16 # size(4) + type(4) + usertype(16)
+		total_size = header_size + len(payload)
+		return base_bytes + struct.pack(">I", total_size) + box_type + usertype + payload
+	else:
+		header_size = 8
+		total_size = header_size + len(payload)
+		return base_bytes + struct.pack(">I", total_size) + box_type + payload
+
+def verify_mp4(path):
+	"""
+	Use ffprobe to quickly check basic mp4 readability.
+	Args:
+		path (str): Path to the MP4 file.
+	"""
+	try:
+		cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]
+		res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=8)
+		return res.returncode == 0 and res.stdout.strip() != b""
+	except Exception:
+		return False
+
+def extract_pdf_bytes(blob):
+	"""
+	Find a %PDF- ... %%EOF region inside blob and return bytes or None.
+	Args:
+		blob (bytes): The binary data to search for PDF content.
+	"""
+	start = blob.find(b"%PDF-")
+	if start == -1:
+		return None
+	# Find last %%EOF after start
+	eof_idx = blob.find(b"%%EOF", start)
+	if eof_idx == -1:
+		return None
+	# Include %%EOF (and possibly following newline)
+	end = eof_idx + len(b"%%EOF")
+	# If there are multiple EOFs, prefer the last one after start:
+	idx = blob.rfind(b"%%EOF")
+	if idx >= start:
+		end = idx + len(b"%%EOF")
+	return blob[start:end]
+
+def extract_png_bytes(blob):
+	"""
+	Find a PNG ... IEND region inside blob and return bytes or None.
+	Args:
+		blob (bytes): The binary data to search for PNG content.
+	"""
+	start = blob.find(PNG_SIG)
+	if start == -1:
+		return None
+	# Find IEND
+	iend_marker = b"\x00\x00\x00\x00IEND"
+	iend_idx = blob.find(iend_marker, start)
+	if iend_idx == -1:
+		return None
+	# Grab until IEND + CRC(4)
+	end = iend_idx + 4 + 4 + 4 # Length(4)=0 + "IEND"(4) + CRC(4)
+	# Safer: find the CRC 4 bytes after the IEND sequence
+	return blob[start:end]
+
+def merge_with_mp4_base(base_path, extras, merged_path):
+	"""
+	Merge extras into an MP4 base file by appending them as 'uuid' boxes.
+	Args:
+		base_path (str): MP4 path.
+		extras (list): List of tuples (filename_on_disk, mime_type/extension).
+		strategy (str): Append each extra as a uuid box (so mp4 players ignore it).
+	"""
+	with open(base_path, "rb") as f:
+		base_bytes = f.read()
+
+	for (extra_path, ext) in extras:
+		with open(extra_path, "rb") as ef:
+			payload = ef.read()
+		# Use "uuid" box so the data is a valid top-level atom
+		base_bytes = append_mp4_box_bytes(base_bytes, b"uuid", payload)
+
+	with open(merged_path, "wb") as out:
+		out.write(base_bytes)
+
+	# Verify mp4 is still readable
+	if not verify_mp4(merged_path):
+		return False, "ffprobe failed; appended atoms probably broke the mp4 structure."
+
+	return True, "OK"
+
+def merge_with_png_base(base_path, extras, merged_path):
+	"""
+	Merge extras into a PNG base file by inserting them as ancillary chunks.
+	Args:
+		base_path (str): PNG path.
+		extras (list): List of tuples (filename_on_disk, mime_type/extension).
+		merged_path (str): Output path for the merged PNG.
+	"""
+	with open(base_path, "rb") as f:
+		base_bytes = f.read()
+
+	# If ICO with PNG inside, find PNG offset and replace that region
+	if base_bytes[:8] != PNG_SIG and find_png_inside_ico(base_bytes) != -1:
+		ico_bytes = base_bytes
+		png_idx = find_png_inside_ico(ico_bytes)
+		png_blob = ico_bytes[png_idx:]
+		# Inject a chunk containing concatenated extras (we'll just concatenate extras)
+		all_extra_payload = b""
+		for (extra_path, ext) in extras:
+			with open(extra_path, "rb") as ef:
+				all_extra_payload += b"\n--EMBED--" + os.path.basename(extra_path).encode("utf-8") + b"\n" + ef.read()
+		new_png = insert_chunk_before_iend(png_blob, b"pLTg", all_extra_payload)
+		merged_bytes = ico_bytes[:png_idx] + new_png
+		with open(merged_path, "wb") as out:
+			out.write(merged_bytes)
+		# Quick verify: PNG still has signature & IEND
+		if new_png.startswith(PNG_SIG) and b"IEND" in new_png:
+			return True, "OK"
+		return False, "PNG injection failed"
+
+def merge_with_pdf_base(base_path, extras, merged_path):
+	"""
+	Merge extras into a PDF base file by embedding them as attachments.
+	Args:
+		base_path (str): PDF path.
+		extras (list): List of tuples (filename_on_disk, mime_type/extension).
+		merged_path (str): Output path for the merged PDF.
+	"""
+	try:
+		from pypdf import PdfReader, PdfWriter
+		writer = PdfWriter(clone_from=base_path)
+		for (extra_path, ext) in extras:
+			with open(extra_path, "rb") as ef:
+				data = ef.read()
+			writer.add_attachment(filename=os.path.basename(extra_path), data=data)
+		with open(merged_path, "wb") as out:
+			writer.write(out)
+		# Quick verify
+		r = PdfReader(merged_path)
+		# Attachments may be at r.attachments or accessed by names; ensure file opens
+		return True, "OK"
+	except Exception as e:
+		return False, f"PDF embedding failed: {e}"
+
+# FIXME: Fix merging of image files to work with video files
+@app.route("/merge", methods=["POST"])
+def merge():
+	"""
+	Merge multiple files into a single file based on their types.
+	"""
+	files = request.files.getlist("files")
+	if not files or len(files) < 2:
+		return jsonify({"error": "At least two files are required for merging"}), 400
+
+	converted = []
+	# Convert each incoming file to the target format
+	for f in files:
+		filename = secure_filename(f.filename)
+		ext = os.path.splitext(filename)[1].lower().lstrip(".")
+		save_path = os.path.join(UPLOAD_FOLDER, filename)
+		f.save(save_path)
+
+		file_type = detect_type(ext)
+		target = None
+		if file_type == "image":
+			target = "ico"
+		elif file_type in ("audio", "video"):
+			target = "mp4"
+		elif file_type == "document":
+			target = "pdf"
+		elif file_type == "archive":
+			target = "zip"
+
+		if target:
+			conv = convert_one({"filename": filename, "target_format": target})
+			if isinstance(conv, dict):
+				conv_path = os.path.join(UPLOAD_FOLDER, conv["filename"])
+			else:
+				conv_path = os.path.join(CONVERTED_FOLDER, conv)
+		else:
+			conv_path = save_path
+		converted.append(conv_path)
+
+	# Choose base using priority (lowest number = highest priority)
+	converted = sorted(converted, key=lambda p: PRIORITY.get(detect_type(os.path.splitext(p)[1].lower().lstrip(".")), 5))
+	base = converted[0]
+	extras = [(p, os.path.splitext(p)[1].lower().lstrip(".")) for p in converted[1:]]
+
+	outname = f"{uuid.uuid4().hex}_merged.polyglot"
+	outpath = os.path.join(CONVERTED_FOLDER, outname)
+
+	base_ext = os.path.splitext(base)[1].lower().lstrip(".")
+
+	# Use strategy depending on base_ext
+	if base_ext == "mp4":
+		ok, msg = merge_with_mp4_base(base, extras, outpath)
+	elif base_ext == "ico":
+		ok, msg = merge_with_png_base(base, extras, outpath)
+	elif base_ext == "pdf":
+		ok, msg = merge_with_pdf_base(base, extras, outpath)
+	else:
+		# Fallback: append raw bytes with byte concatenation and try to verify via magic scanning
+		with open(base, "rb") as bf:
+			out_bytes = bf.read()
+		for p, ext in extras:
+			with open(p, "rb") as ef:
+				out_bytes += ef.read()
+		with open(outpath, "wb") as out:
+			out.write(out_bytes)
+		ok = True
+		msg = "Appended raw bytes (fallback)."
+
+	if not ok:
+		return jsonify({"error": "merge failed", "detail": msg}), 500
+
+	return send_file(outpath, as_attachment=True, download_name=outname)
+
+@app.route("/metadata", methods=["POST"])
+def get_metadata():
+	"""
+	Get metadata for a file using ExifTool.
+	Args:
+		filepath (str): Path to the file for which metadata is requested.
+	"""
+	data = request.get_json()
+	if not data or "filepath" not in data:
+		return jsonify({"error": "Missing \"filepath\" in JSON"}), 400
+
+	filepath = os.path.join(UPLOAD_FOLDER, secure_filename(data["filepath"]))
+	if not os.path.exists(filepath):
+		return jsonify({"error": "File does not exist"}), 404
+
+	try:
+		result = subprocess.run(
+			["exiftool", "-j", filepath],
+			capture_output=True,
+			text=True,
+			check=True
+		)
+		metadata = json.loads(result.stdout)[0]
+		return jsonify(metadata)
+
+	except subprocess.CalledProcessError as e:
+		return jsonify({"error": "Exiftool command failed", "details": e.stderr}), 500
+	except (json.JSONDecodeError, IndexError):
+		return jsonify({"error": "Failed to parse exiftool output"}), 500
+
 def detect_type(ext):
 	"""
 	Detect the type of file based on its extension.
@@ -303,6 +688,8 @@ def detect_type(ext):
 		return "video"
 	elif ext in doc_exts:
 		return "document"
+	elif ext in archive_exts:
+		return "archive"
 	else:
 		return "unknown"
 

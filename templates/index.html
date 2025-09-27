@@ -31,6 +31,7 @@
 				<option value="">Select conversion format</option>
 			</select>
 			<button id="convertBtn" disabled>Convert</button>
+			<button id="mergeBtn" disabled style="display:none;" onclick="mergeFiles()">Merge</button>
 		</div>
 	</div>
 
@@ -47,11 +48,9 @@
 		const folderInput = document.getElementById("folderInput");
 		const formatSelect = document.getElementById("formatSelect");
 		const convertBtn = document.getElementById("convertBtn");
+		const mergeBtn = document.getElementById("mergeBtn");
 
-		let files = [];
-		let currentType = null;
-
-		// Define supported formats
+		// Define file format options
 		const formatOptions = {
 			image: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "ico", "svg", "eps", "tga", "tif", "tiff", "ppm", "xbm", "icns"],
 			audio: ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "alac", "amr", "mka"],
@@ -61,6 +60,17 @@
 			presentation: ["ppt", "pptx", "odp", "keynote"],
 			archive: ["zip", "rar", "tar", "gz", "7z", "bz2", "xz"]
 		};
+
+		let COMPATIBLE_MATRIX = {
+			image: ["image"],
+			video: ["image", "audio", "video"],
+			audio: ["audio", "video"],
+			document: ["image", "document"],
+			archive: ["archive"]
+		};
+
+		let files = [];
+		let currentType = null;
 
 		/**
 		 * @brief Displays a notification message.
@@ -92,24 +102,43 @@
 				return getFileType(ext) || "unknown";
 			});
 			let uniqueTypes = [...new Set(fileTypes)];
-			// If video and audio are mixed, get rid of video
-			if (uniqueTypes.includes("video") && uniqueTypes.includes("audio")) {
-				uniqueTypes = uniqueTypes.filter(type => type !== "video");
+			// Turn on merge button if conditions are met
+			// Needs 1 of the following formats: video, audio, document
+			// Needs at least 1 of the following (different from base): image, video, audio, document, archive
+			if (fileTypes.length > 1 && uniqueTypes.length === fileTypes.length && (fileTypes.includes("video") || fileTypes.includes("audio") || fileTypes.includes("document")) && fileTypes.some(type => ["image", "document", "archive"].includes(type))) {
+				mergeBtn.style.display = "inline-block";
+				mergeBtn.disabled = false;
+				mergeBtn.classList.toggle("active", !mergeBtn.disabled);
 			}
-			// If only video, add audio
-			if (uniqueTypes.length === 1 && uniqueTypes[0] === "video") {
-				uniqueTypes.push("audio");
+			else {
+				mergeBtn.style.display = "none";
+				mergeBtn.disabled = true;
+				mergeBtn.classList.remove("active");
 			}
-			// If extension is pdf and no other extensions, add image
-			if (extensions.includes("pdf") && extensions.length === 1) {
-				uniqueTypes.push("image");
-			}
+
+			// Use the COMPATIBLE_MATRIX to populate format options
+			const compatibleFormats = uniqueTypes.reduce((acc, type) => {
+				if (COMPATIBLE_MATRIX[type]) {
+					for (const compatibleType of COMPATIBLE_MATRIX[type]) {
+						if (!acc.includes(compatibleType)) {
+							acc.push(compatibleType);
+						}
+					}
+				}
+				return acc;
+			}, []);
+			// Filter out duplicates and unsupported formats
+			const uniqueCompatibleFormats = [...new Set(compatibleFormats)];
+			// Filter out formats that aren't compatible by using the COMPATIBLE_MATRIX
+			const filteredFormats = uniqueCompatibleFormats.filter(format => {
+				return uniqueTypes.every(type => COMPATIBLE_MATRIX[type] && COMPATIBLE_MATRIX[type].includes(format));
+			});
 
 			// Clear previous options
 			formatSelect.innerHTML = `<option value="">Select conversion format</option>`;
 
 			// Add options based on current files
-			for (const type of uniqueTypes) {
+			for (const type of filteredFormats) {
 				if (formatOptions[type]) {
 					for (const format of formatOptions[type]) {
 						// JPEG is already covered by JPG
@@ -173,18 +202,6 @@
 		}
 
 		/**
-		 * @brief Check if file types are compatible.
-		 * @param {string} type - The type of the file to check.
-		 * @param {string} type2 - The type to compare against.
-		 * @return {boolean} True if the type is compatible, false otherwise.
-		 */
-		function isCompatibleType(type, type2) {
-			if (type === "video" && type2 === "audio"
-				|| type === "audio" && type2 === "video") return true;
-			return type === type2;
-		}
-
-		/**
 		 * @brief Processes a list of files from any input source.
 		 * @param {FileList} incomingFiles - The list of files to process.
 		 * @return {void}
@@ -200,12 +217,6 @@
 				// Check for valid file type
 				if (!file.type || !formatOptions[fileMainType]) {
 					showNotification(`File type for "${file.name}" is not supported.`);
-					continue;
-				}
-
-				// Ensure all files are of the same type (e.g., all images)
-				if (files.length > 0 && currentType && !isCompatibleType(currentType, fileMainType)) {
-					showNotification(`You can only upload files of the same type. Please clear existing files to switch types.`);
 					continue;
 				}
 
@@ -292,6 +303,7 @@
 			if (formatOptions.video.includes(ext)) return "video";
 			if (formatOptions.audio.includes(ext)) return "audio";
 			if (formatOptions.document.includes(ext)) return "document";
+			if (formatOptions.archive.includes(ext)) return "archive";
 			return null; // Unsupported type
 		}
 
@@ -352,7 +364,7 @@
 			const link = document.createElement("a");
 			link.href = url;
 			if (files.length > 1) {
-				link.download = `converted_files.zip`;
+				link.download = "converted_files.zip";
 			} else if (blob.type === "application/zip") {
 				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_converted.zip`;
 			} else {
@@ -370,6 +382,77 @@
 			if (size === 0) return "0 B";
 			const i = Math.floor(Math.log(size) / Math.log(1024));
 			return `${parseFloat((size / Math.pow(1024, i)).toFixed(2))} ${['B', "KB", "MB", "GB", "TB"][i]}`;
+		}
+
+		/**
+		 * @brief Displays overlay that covers the webpage.
+		 * @param {string} message - The message to be displayed on the overlay.
+		 * @return {void}
+		 */
+		function showOverlay(message) {
+			// Overlay will be a box that covers the entire page and the user cannot interact with the page until the overlay is closed
+			const overlay = document.createElement("div");
+			overlay.className = "overlay";
+			overlay.innerHTML = `
+				<div class="overlay-content">
+					<button class="close-btn" onclick="document.body.removeChild(this.parentElement.parentElement)">✖</button>${message}</div>
+			`;
+			document.body.appendChild(overlay);
+			// Add click event to close the overlay when clicking outside the content area
+			overlay.addEventListener("click", (e) => {
+				if (e.target === overlay) {
+					document.body.removeChild(overlay);
+				}
+			});
+			// Add styles to the overlay
+			overlay.style.position = "fixed";
+			overlay.style.top = "0";
+			overlay.style.left = "0";
+			overlay.style.width = "100%";
+			overlay.style.height = "100%";
+			overlay.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+			overlay.style.zIndex = "1000";
+			overlay.style.display = "flex";
+			overlay.style.justifyContent = "center";
+			overlay.style.alignItems = "center";
+			overlay.style.color = "#fff";
+			overlay.style.fontSize = "1.2em";
+			overlay.style.padding = "20px";
+			overlay.style.boxSizing = "border-box";
+			overlay.style.overflowY = "auto";
+			overlay.querySelector(".overlay-content").style.backgroundColor = "#1e1e1e";
+			overlay.querySelector(".overlay-content").style.padding = "20px";
+			overlay.querySelector(".overlay-content").style.borderRadius = "8px";
+			overlay.querySelector(".overlay-content").style.maxWidth = "600px";
+			overlay.querySelector(".overlay-content").style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+			overlay.querySelector(".overlay-content").style.textAlign = "center";
+			overlay.querySelector(".close-btn").style.position = "absolute";
+			overlay.querySelector(".close-btn").style.top = "10px";
+			overlay.querySelector(".close-btn").style.right = "10px";
+			overlay.querySelector(".close-btn").style.backgroundColor = "transparent";
+			overlay.querySelector(".close-btn").style.border = "none";
+			overlay.querySelector(".close-btn").style.color = "#fff";
+			overlay.querySelector(".close-btn").style.fontSize = "1.5em";
+			overlay.querySelector(".close-btn").style.cursor = "pointer";
+			overlay.querySelector(".close-btn").style.padding = "0";
+			overlay.querySelector(".close-btn").style.zIndex = "1001"; // Ensure the close button is above the overlay
+			overlay.querySelector(".close-btn").style.transition = "color 0.3s";
+			overlay.querySelector(".close-btn").addEventListener("mouseover", function() {
+				this.style.color = "#ff4081"; // Change color on hover
+			});
+			overlay.querySelector(".close-btn").addEventListener("mouseout", function() {
+				this.style.color = "#fff"; // Reset color on mouse out
+			});
+			// Add a scrollbar to the overlay content if it overflows
+			overlay.querySelector(".overlay-content").style.maxHeight = "80vh";
+			overlay.querySelector(".overlay-content").style.overflowY = "auto";
+			// Add a transition effect for the overlay
+			overlay.style.transition = "opacity 0.3s ease-in-out";
+			// Set initial opacity to 0 and fade in
+			overlay.style.opacity = "0";
+			setTimeout(() => {
+				overlay.style.opacity = "1";
+			}, 10); // Delay to allow the styles to apply before fading in
 		}
 
 		/**
@@ -393,14 +476,51 @@
 				convertBtn.classList.remove("active");
 			}
 
-			// Display file preview and info
+			// Display file preview
 			const fileId = file.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + file.size;
 			const preview = document.getElementById(fileId).querySelector(".file-preview");
 			await showPreview(file, preview);
+			// Display file info
 			const fileInfo = document.createElement("div");
 			fileInfo.className = "file-info";
 			fileInfo.textContent = `${file.name}, ${formatFileSize(file.size)} (${file.type})`;
 			preview.appendChild(fileInfo);
+			// Add info image with click event to show file details
+			const infoImage = document.createElement("img");
+			infoImage.src = "{{ url_for('static', filename='info.svg') }}";
+			infoImage.alt = "Info";
+			infoImage.className = "info-image";
+			infoImage.style.background = "transparent";
+			infoImage.addEventListener("click", () => {
+				// Fetch metadata from the server
+				fetch("/metadata", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ filepath: file.name })
+				})
+				.then(res => res.json())
+				.then(metadata => {
+					if (metadata.error) {
+						showNotification(`Error fetching metadata: ${metadata.error}`);
+					} else {
+						showOverlay(`
+							<h2>File Information</h2>
+							<p><strong>Name:</strong> ${file.name}</p>
+							<p><strong>Size:</strong> ${formatFileSize(file.size)}</p>
+							<p><strong>Type:</strong> ${file.type || "Unknown"}</p>
+							<p><strong>Last Modified:</strong> ${new Date(file.lastModified).toLocaleString()}</p>
+							<p><strong>Metadata:</strong></p>
+							<pre>${JSON.stringify(metadata, null, 2).substring(1, JSON.stringify(metadata, null, 2).length - 1)}</pre>
+						`);
+					}
+				})
+				.catch(err => {
+					showNotification(`Error fetching metadata: ${err.message}`);
+				});
+			});
+			preview.appendChild(infoImage);
 		}
 
 		/**
@@ -470,6 +590,7 @@
 				const audio = document.createElement("audio");
 				audio.src = URL.createObjectURL(file);
 				audio.controls = true;
+				badge.style.top = "-12px"; // Adjust badge position to be above audio controls
 				preview.appendChild(audio);
 			} else if (["txt"].includes(ext)) {
 				const textContent = await readFileAsText(file);
@@ -517,8 +638,37 @@
 			document.getElementById("file-container").innerHTML = "";
 			adjustFormatOptions();
 			convertBtn.disabled = true;
+			mergeBtn.disabled = true;
+			mergeBtn.style.display = "none";
 			convertBtn.classList.remove("active");
 			dropZone.classList.remove("active");
+			mergeBtn.classList.remove("active");
+		}
+
+		/**
+		 * @brief Merges files into a polyglot file.
+		 * @return {void}
+		 */
+		function mergeFiles() {
+			const formData = new FormData();
+			for (const file of files) {
+				formData.append("files", file);
+			}
+			formData.append("target_format", "polyglot");
+
+			fetch("/merge", {
+				method: "POST",
+				body: formData
+			})
+			.then(res => res.blob())
+			.then(blob => {
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement("a");
+				link.href = url;
+				link.download = `${files[0].name.split('.').slice(0, -1).join('.')}_merged.polyglot`;
+				link.click();
+			})
+			.catch(err => showNotification(`Error merging files: ${err.message}`));
 		}
 	</script>
 </body>

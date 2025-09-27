@@ -14,3 +14,6 @@ numpy
 pdfminer.six
 fpdf
 pdf2image
+
+# Archive processing
+py7zr
