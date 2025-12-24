@@ -29,8 +29,9 @@ Welcome to **Uniconverter**! This program allows you to convert files of one typ
 - ♾️ **No Conversion Limit**: There are no caps on the number or size of files you can convert.
 - 👍 **Docker Compatibility**: The program can be run in a Docker container, making it easy to deploy and use on any system.
 - 🫂 **PWA Support**: The program can be installed as a Progressive Web App (PWA), allowing users to run it like a native application on their devices.
-- 🧩 **Polyglot Merging**: The program can merge files of different formats into a single output file (that's not an archive).
+- 🧩 **Polyglot Merging**: The program can merge files of different formats into a single output file.
 - ℹ️ **Metadata Extraction**: The program can extract metadata from files, providing users with additional information about their files.
+- 🗑️ **Metadata Deletion**: The program can delete metadata from files, ensuring user privacy and reducing file size.
 
 ## 🛠️ Installation
 
@@ -50,6 +51,10 @@ cd ./uniconverter/
 ```sh
 pip install -r requirements.txt
 ```
+
+or
+
+- **Docker**: You can download Docker from the [Docker website](https://www.docker.com/get-started).
 
 </details>
 
