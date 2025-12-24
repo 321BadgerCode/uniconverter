@@ -35,7 +35,7 @@ Welcome to **Uniconverter**! This program allows you to convert files of one typ
 
 ## 🛠️ Installation
 
-**Clone the repository**
+To install, you only have to **clone the repository**
 ```sh
 git clone https://github.com/321BadgerCode/uniconverter.git
 cd ./uniconverter/
@@ -45,32 +45,39 @@ cd ./uniconverter/
 
 <summary>📦 Dependencies</summary>
 
+When using Docker, the only dependency for this repository is Docker itself.
+
+- **Docker**: You can download Docker from [this Docker instruction](https://docs.docker.com/get-docker/).
+
+---
+
+Otherwise, the following dependencies are required:
+
+- **Python**: You can download Python from the [Python website](https://www.python.org/downloads/).
 - **FFMpeg**: The program requires FFmpeg to be installed on your system. You can download it from the [FFmpeg website](https://www.ffmpeg.org/download.html).
-- **Exiftool**: The program uses Exiftool for metadata extraction. You can download it from the [Exiftool website](https://exiftool.org/).
+- **ExifTool**: The program uses ExifTool for metadata extraction. You can download it from the [ExifTool website](https://exiftool.org/).
 - **Python Packages**: The program uses several Python packages. You can install them using pip:
 ```sh
 pip install -r requirements.txt
 ```
 
-or
-
-- **Docker**: You can download Docker from the [Docker website](https://www.docker.com/get-started).
-
 </details>
 
 > [!NOTE]
-> Not all packages are required for the program to run, but some packages are needed for specific conversions or features.
+> Not all Python packages are required for the program to run, but some packages are needed for specific file conversions or features.
 
 ## 📈 Usage
 
-To use the program, you can either run it in python or within a [Docker](https://www.docker.com/) container:
+To use the program, you can either run it with Python or within a [Docker](https://www.docker.com/) container:
 
 ### Using Python
 
-**Run the program**
+After installing the dependencies, the only command needed to run the program is:
 ```sh
 python ./app.py
 ```
+
+Then, just go to [http://localhost:5000](http://127.0.0.1:5000) to view the web interface.
 
 ### Using Docker
 
@@ -85,7 +92,7 @@ python ./app.py
 ```sh
 groups # Check your user groups (you should see `docker` in the list)
 newgrp docker # Create a new group session with the `docker` group
-sudo usermod -aG docker $USER && sudo reboot # Add your user to the Docker group and reboot
+sudo usermod -aG docker $USER && sudo reboot # Add your user to the Docker group and reboot your device
 ```
 
 </details>
@@ -156,7 +163,7 @@ chmod +x ./setup_dev.sh
 ./setup_dev.sh
 ```
 
-This establishes the Git commit template and commitmsg hook, which ensures that all commits follow the project's commit message guidelines.
+This establishes the Git commit template and commit-msg hook, which ensures that all commits follow the project's commit message guidelines.
 
 ## 📜 License
 
