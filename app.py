@@ -674,6 +674,33 @@ def get_metadata():
 	except (json.JSONDecodeError, IndexError):
 		return jsonify({"error": "Failed to parse exiftool output"}), 500
 
+@app.route("/metadata/delete", methods=["POST"])
+def delete_metadata():
+	"""
+	Delete metadata for a file using ExifTool.
+	Args:
+		filepath (str): Path to the file for which metadata is requested.
+	"""
+	data = request.get_json()
+	if not data or "filepath" not in data:
+		return jsonify({"error": "Missing \"filepath\" in JSON"}), 400
+
+	filepath = os.path.join(UPLOAD_FOLDER, secure_filename(data["filepath"]))
+	if not os.path.exists(filepath):
+		return jsonify({"error": "File does not exist"}), 404
+
+	try:
+		result = subprocess.run(
+			["exiftool", "-all=", filepath],
+			capture_output=True,
+			text=True,
+			check=True
+		)
+		return jsonify({"success": True})
+
+	except subprocess.CalledProcessError as e:
+		return jsonify({"error": "Exiftool command failed", "details": e.stderr}), 500
+
 def detect_type(ext):
 	"""
 	Detect the type of file based on its extension.

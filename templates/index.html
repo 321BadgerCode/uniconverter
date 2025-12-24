@@ -513,6 +513,7 @@
 							<p><strong>Last Modified:</strong> ${new Date(file.lastModified).toLocaleString()}</p>
 							<p><strong>Metadata:</strong></p>
 							<pre>${JSON.stringify(metadata, null, 2).substring(1, JSON.stringify(metadata, null, 2).length - 1)}</pre>
+							<button class="delete-metadata-btn" onclick="deleteMetadata('${file.name}')">Delete Metadata</button>
 						`);
 					}
 				})
@@ -521,6 +522,37 @@
 				});
 			});
 			preview.appendChild(infoImage);
+		}
+
+		/**
+		 * @brief Deletes metadata for a file.
+		 * @param {string} filepath - The path to the file for which metadata should be deleted.
+		 * @return {Promise<void>} A promise that resolves when the metadata is deleted.
+		 */
+		function deleteMetadata(filepath) {
+			return new Promise((resolve, reject) => {
+				fetch("/metadata/delete", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json"
+					},
+					body: JSON.stringify({ filepath })
+				})
+				.then(res => res.json())
+				.then(data => {
+					if (data.error) {
+						showNotification(`Error deleting metadata: ${data.error}`);
+						reject(data.error);
+					} else {
+						showNotification(`Metadata deleted successfully.`);
+						resolve();
+					}
+				})
+				.catch(err => {
+					showNotification(`Error deleting metadata: ${err.message}`);
+					reject(err);
+				});
+			});
 		}
 
 		/**

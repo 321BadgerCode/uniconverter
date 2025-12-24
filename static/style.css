@@ -186,7 +186,7 @@ h1 {
 	flex-wrap: wrap;
 }
 
-select, button:not(#clearAllBtn):not(.remove-btn):not(#convertBtn):not(#mergeBtn) {
+select, button:not(#clearAllBtn):not(.remove-btn):not(.delete-metadata-btn):not(#convertBtn):not(#mergeBtn) {
 	background-color: var(--bg-light);
 	color: var(--text-light);
 	border: 1px solid var(--border-color);
@@ -234,4 +234,13 @@ button:disabled, select:disabled {
 	border: none;
 	padding: 0.5rem 0.8rem;
 	font-size: 0.875rem;
+}
+
+.delete-metadata-btn {
+	background-color: var(--danger-color);
+	color: #fff;
+	border: 1px solid var(--danger-color);
+}
+.delete-metadata-btn:hover {
+	background-color: var(--danger-hover-color);
 }
