@@ -77,12 +77,15 @@
 		 * @param {string} message - The message to be displayed.
 		 * @return {void}
 		 */
-		function showNotification(message) {
+		function showNotification(message, success = false, seconds = 4) {
 			notification.textContent = message;
 			notification.style.display = "block";
+			notification.style.backgroundColor = success ? "#244c1d" : "#4c1d24";
+			notification.style.color = success ? "#fff" : "#fecaca";
+			notification.style.border = success ? "1px solid #4caf50" : "1px solid #991b1b";
 			setTimeout(() => {
 				notification.style.display = "none";
-			}, 4000); // Hide after 4 seconds
+			}, seconds * 1000); // Hide after specified seconds
 		}
 
 		/**
@@ -298,6 +301,7 @@
 		 * @param {string} ext - The file extension.
 		 * @return {string} The file type.
 		 */
+		// TODO: If parameter has dot, get extension substring.
 		function getFileType(ext) {
 			if (formatOptions.image.includes(ext)) return "image";
 			if (formatOptions.video.includes(ext)) return "video";
@@ -395,7 +399,12 @@
 			overlay.className = "overlay";
 			overlay.innerHTML = `
 				<div class="overlay-content">
-					<button class="close-btn" onclick="document.body.removeChild(this.parentElement.parentElement)">✖</button>${message}</div>
+					<button class="close-btn" onclick="document.body.removeChild(this.parentElement.parentElement)">✖</button>
+					<button class="fullscreen-btn">⛶</button>
+					<div class="overlay-message">
+						${message}
+					</div>
+				</div>
 			`;
 			document.body.appendChild(overlay);
 			// Add click event to close the overlay when clicking outside the content area
@@ -426,6 +435,7 @@
 			overlay.querySelector(".overlay-content").style.maxWidth = "600px";
 			overlay.querySelector(".overlay-content").style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
 			overlay.querySelector(".overlay-content").style.textAlign = "center";
+			// Close button
 			overlay.querySelector(".close-btn").style.position = "absolute";
 			overlay.querySelector(".close-btn").style.top = "10px";
 			overlay.querySelector(".close-btn").style.right = "10px";
@@ -435,13 +445,76 @@
 			overlay.querySelector(".close-btn").style.fontSize = "1.5em";
 			overlay.querySelector(".close-btn").style.cursor = "pointer";
 			overlay.querySelector(".close-btn").style.padding = "0";
-			overlay.querySelector(".close-btn").style.zIndex = "1001"; // Ensure the close button is above the overlay
+			overlay.querySelector(".close-btn").style.zIndex = "1001";
 			overlay.querySelector(".close-btn").style.transition = "color 0.3s";
 			overlay.querySelector(".close-btn").addEventListener("mouseover", function() {
-				this.style.color = "#ff4081"; // Change color on hover
+				this.style.color = "#ff4081";
 			});
 			overlay.querySelector(".close-btn").addEventListener("mouseout", function() {
-				this.style.color = "#fff"; // Reset color on mouse out
+				this.style.color = "#fff";
+			});
+			// Fullscreen button
+			overlay.querySelector(".fullscreen-btn").style.position = "absolute";
+			overlay.querySelector(".fullscreen-btn").style.top = "10px";
+			overlay.querySelector(".fullscreen-btn").style.right = "50px";
+			overlay.querySelector(".fullscreen-btn").style.backgroundColor = "transparent";
+			overlay.querySelector(".fullscreen-btn").style.border = "none";
+			overlay.querySelector(".fullscreen-btn").style.color = "#fff";
+			overlay.querySelector(".fullscreen-btn").style.fontSize = "1.5em";
+			overlay.querySelector(".fullscreen-btn").style.cursor = "pointer";
+			overlay.querySelector(".fullscreen-btn").style.padding = "0";
+			overlay.querySelector(".fullscreen-btn").style.zIndex = "1001";
+			overlay.querySelector(".fullscreen-btn").style.transition = "color 0.3s";
+			overlay.querySelector(".fullscreen-btn").addEventListener("mouseover", function() {
+				this.style.color = "#00aaff";
+			});
+			overlay.querySelector(".fullscreen-btn").addEventListener("mouseout", function() {
+				this.style.color = "#fff";
+			});
+			overlay.querySelector(".fullscreen-btn").addEventListener("click", function() {
+				const newTab = window.open();
+
+				const messagesHTML = Array.from(overlay.querySelectorAll(".overlay-message"))
+					.map(msg => {
+						const clone = msg.cloneNode(true);
+						clone.querySelectorAll("button").forEach(btn => btn.remove());
+						return clone.innerHTML.trim();
+					})
+					.join("<hr>");
+
+				newTab.document.write(`
+					<!DOCTYPE html>
+					<html>
+					<head>
+						<title>Fullscreen Overlay</title>
+						<style>
+							body {
+								margin: 0;
+								padding: 20px;
+								background-color: #1e1e1e;
+								color: #fff;
+								font-family: Arial, sans-serif;
+								line-height: 1.5;
+							}
+							.overlay-content {
+								max-width: 600px;
+								margin: 0 auto;
+							}
+							hr {
+								border: 1px solid #555;
+								margin: 20px 0;
+							}
+						</style>
+					</head>
+					<body>
+						<div class="overlay-content">
+							${messagesHTML}
+						</div>
+					</body>
+					</html>
+				`);
+
+				newTab.document.close();
 			});
 			// Add a scrollbar to the overlay content if it overflows
 			overlay.querySelector(".overlay-content").style.maxHeight = "80vh";
@@ -453,6 +526,132 @@
 			setTimeout(() => {
 				overlay.style.opacity = "1";
 			}, 10); // Delay to allow the styles to apply before fading in
+
+			return overlay.querySelector(".overlay-content");
+		}
+
+		/**
+		 * @brief Upscale images.
+		 * @param {int} imageIndex - The index of the image file to upscale.
+		 */
+		function upscaleImage(imageIndex) {
+			const image = files[imageIndex];
+			const filesize = image.size;
+			fetch("/upscale", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json"
+				},
+				body: JSON.stringify({ filepath: image.name, scale: document.getElementById("upscale-scale").value })
+			})
+			.then(res => res.blob())
+			.then(blob => {
+				if (blob.size === 0) {
+					showNotification(`Error upscaling image: ${blob.error}`);
+				} else {
+					showNotification(`Image upscaled successfully: ${blob.filepath}`, true);
+
+					// Drop the entire overlay
+					const overlay = document.querySelector(".overlay");
+					if (overlay) {
+						overlay.remove();
+					}
+
+					// Find file item and remove it, then re-upload file
+					const fileId = image.name.replace(/[^a-zA-Z0-9]/g, '_') + '_' + filesize;
+					const fileItem = document.getElementById(fileId);
+					if (fileItem) {
+						fileItem.remove();
+					}
+					files = files.filter((_, index) => index !== imageIndex);
+
+					const newFile = new File([blob], image.name, { type: image.type });
+					createFileItem(newFile);
+					uploadFile(newFile);
+				}
+			})
+			.catch(err => {
+				showNotification(`Error upscaling image: ${err.message}`);
+			});
+		}
+
+		/**
+		 * @brief Shows the tools overlay for the specified file.
+		 * @param {File} file - The file for which to show the tools overlay.
+		 */
+		function showToolsOverlay(file) {
+			if (getFileType(file.name.split('.').pop().toLowerCase()) == "image") {
+				// Create the overlay HTML and insert it
+				const overlayContent = showOverlay(`
+					<h2>Image Options</h2>
+					<button class="upscale-image-btn">Upscale Image</button>
+					<div class="upscale-options">
+						<label>Width:</label>
+						<input type="number" id="upscale-width" value="1" min="1">
+						<label>Height:</label>
+						<input type="number" id="upscale-height" value="1" min="1">
+						<label>Scale:</label>
+						<input type="number" id="upscale-scale" value="2" min="1" max="4">
+					</div>
+				`);
+
+				if (!overlayContent) {
+					console.error("Overlay content not found!");
+					return;
+				}
+
+				// Query inputs and button scoped to overlayContent
+				const widthInput  = overlayContent.querySelector("#upscale-width");
+				const heightInput = overlayContent.querySelector("#upscale-height");
+				const scaleInput  = overlayContent.querySelector("#upscale-scale");
+				const upscaleBtn  = overlayContent.querySelector(".upscale-image-btn");
+
+				if (!widthInput || !heightInput || !scaleInput || !upscaleBtn) {
+					console.error("Overlay elements missing");
+					return;
+				}
+
+				// Load image to get original dimensions
+				const img = new Image();
+				img.onload = () => {
+					const originalWidth  = img.naturalWidth;
+					const originalHeight = img.naturalHeight;
+
+					// Initialize inputs
+					widthInput.value  = originalWidth;
+					heightInput.value = originalHeight;
+
+					// Wire input events
+					widthInput.addEventListener("input", () => {
+						const w = parseInt(widthInput.value);
+						if (!w) return;
+						const scale = w / originalWidth;
+						scaleInput.value = scale.toFixed(2);
+						heightInput.value = Math.round(originalHeight * scale);
+					});
+
+					heightInput.addEventListener("input", () => {
+						const h = parseInt(heightInput.value);
+						if (!h) return;
+						const scale = h / originalHeight;
+						scaleInput.value = scale.toFixed(2);
+						widthInput.value = Math.round(originalWidth * scale);
+					});
+
+					scaleInput.addEventListener("input", () => {
+						const s = parseFloat(scaleInput.value);
+						if (!s) return;
+						widthInput.value  = Math.round(originalWidth * s);
+						heightInput.value = Math.round(originalHeight * s);
+					});
+				};
+				img.src = URL.createObjectURL(file);
+
+				// Wire button click
+				upscaleBtn.addEventListener("click", () => {
+					upscaleImage(files.indexOf(file));
+				});
+			}
 		}
 
 		/**
@@ -522,6 +721,16 @@
 				});
 			});
 			preview.appendChild(infoImage);
+			// Add tools image with click event to have overlay of options the user can do to the file
+			const toolsImage = document.createElement("img");
+			toolsImage.src = "{{ url_for('static', filename='tools.svg') }}";
+			toolsImage.alt = "Tools";
+			toolsImage.className = "tools-image";
+			toolsImage.style.background = "transparent";
+			toolsImage.addEventListener("click", () => {
+				showToolsOverlay(file);
+			});
+			preview.appendChild(toolsImage);
 		}
 
 		/**
@@ -544,7 +753,7 @@
 						showNotification(`Error deleting metadata: ${data.error}`);
 						reject(data.error);
 					} else {
-						showNotification(`Metadata deleted successfully.`);
+						showNotification(`Metadata deleted successfully.`, true);
 						resolve();
 					}
 				})

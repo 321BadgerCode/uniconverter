@@ -701,6 +701,35 @@ def delete_metadata():
 	except subprocess.CalledProcessError as e:
 		return jsonify({"error": "Exiftool command failed", "details": e.stderr}), 500
 
+@app.route("/upscale", methods=["POST"])
+def upscale_image():
+	"""
+	Upscale images using OpenCV.
+	Args:
+		filepath (str): Path to the image file to upscale.
+		scale (int): Scale factor (must be between 1 and 4).
+	"""
+	data = request.get_json()
+	if not data or "filepath" not in data or "scale" not in data:
+		return jsonify({"error": "Missing parameters in JSON"}), 400
+
+	filepath = os.path.join(UPLOAD_FOLDER, secure_filename(data["filepath"]))
+	if not os.path.exists(filepath):
+		return jsonify({"error": "File does not exist"}), 404
+
+	try:
+		import cv2
+
+		scale = float(data["scale"])
+		if not (1 <= scale <= 4):
+			return jsonify({"error": "Invalid scale value. Must be between 1 and 4."}), 400
+		img = cv2.imread(filepath)
+		upscaled = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+		cv2.imwrite(filepath, upscaled)
+		return send_file(filepath, as_attachment=False)
+	except Exception as e:
+		return jsonify({"error": "Upscale command failed", "details": str(e)}), 500
+
 def detect_type(ext):
 	"""
 	Detect the type of file based on its extension.
